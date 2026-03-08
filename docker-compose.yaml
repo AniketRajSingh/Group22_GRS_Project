@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  node-1:
+    build: ./group22_inference_service
+    container_name: node-1
+    environment:
+      - NODE_ID=node-1
+      - N_THREADS=2
+    volumes:
+      - ./models:/models
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  node-2:
+    build: ./group22_inference_service
+    container_name: node-2
+    environment:
+      - NODE_ID=node-2
+      - N_THREADS=2
+    volumes:
+      - ./models:/models
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5' # Deliberately lower to test load balancing
+          memory: 512M
+
+  node-3:
+    build: ./group22_inference_service
+    container_name: node-3
+    environment:
+      - NODE_ID=node-3
+      - N_THREADS=2
+    volumes:
+      - ./models:/models
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  load_balancer:
+    build:
+      context: ./group22_load_balancer
+      dockerfile: Dockerfile
+    container_name: load_balancer
+    ports:
+      - "8080:8080"
+    environment:
+      - NODES=node-1,node-2,node-3
+      - ROUTING_STRATEGY=hardware-aware
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - node-1
+      - node-2
+      - node-3

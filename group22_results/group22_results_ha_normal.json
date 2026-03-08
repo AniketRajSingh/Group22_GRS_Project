@@ -1,0 +1,122 @@
+[
+    {
+        "prompt_id": 1,
+        "status": "error",
+        "error": "Cannot connect to host load-balancer:8080 ssl:default [Connect call failed ('10.96.8.238', 8080)]",
+        "latency_ms": 21053.5728931427
+    },
+    {
+        "prompt_id": 0,
+        "status": "error",
+        "error": "Cannot connect to host load-balancer:8080 ssl:default [Connect call failed ('10.96.8.238', 8080)]",
+        "latency_ms": 21053.818941116333
+    },
+    {
+        "prompt_id": 3,
+        "status": 200,
+        "latency_ms": 34.265756607055664,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 2,
+        "status": 200,
+        "latency_ms": 35.186767578125,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 4,
+        "status": 200,
+        "latency_ms": 29.858827590942383,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 5,
+        "status": 200,
+        "latency_ms": 30.469179153442383,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 6,
+        "status": 200,
+        "latency_ms": 27.97722816467285,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 7,
+        "status": 200,
+        "latency_ms": 27.574539184570312,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 8,
+        "status": 200,
+        "latency_ms": 28.092622756958008,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 9,
+        "status": 200,
+        "latency_ms": 28.06258201599121,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 10,
+        "status": 200,
+        "latency_ms": 33.1883430480957,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 11,
+        "status": 200,
+        "latency_ms": 33.23245048522949,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 12,
+        "status": 200,
+        "latency_ms": 28.192520141601562,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 13,
+        "status": 200,
+        "latency_ms": 41.333675384521484,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 14,
+        "status": 200,
+        "latency_ms": 28.690099716186523,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 15,
+        "status": 200,
+        "latency_ms": 15.828371047973633,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 16,
+        "status": 200,
+        "latency_ms": 32.7906608581543,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 17,
+        "status": 200,
+        "latency_ms": 44.8300838470459,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 18,
+        "status": 200,
+        "latency_ms": 28.163671493530273,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 19,
+        "status": 200,
+        "latency_ms": 15.935659408569336,
+        "node": "unknown"
+    }
+]

@@ -1,0 +1,122 @@
+[
+    {
+        "prompt_id": 1,
+        "status": 502,
+        "latency_ms": 1768.3155536651611,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 0,
+        "status": 502,
+        "latency_ms": 1768.8922882080078,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 2,
+        "status": 502,
+        "latency_ms": 1104.4683456420898,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 3,
+        "status": 502,
+        "latency_ms": 1104.8192977905273,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 4,
+        "status": 200,
+        "latency_ms": 47.124624252319336,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 5,
+        "status": 200,
+        "latency_ms": 62.906742095947266,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 6,
+        "status": 200,
+        "latency_ms": 41.20683670043945,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 7,
+        "status": 200,
+        "latency_ms": 45.53794860839844,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 8,
+        "status": 200,
+        "latency_ms": 43.24054718017578,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 9,
+        "status": 200,
+        "latency_ms": 37.05263137817383,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 10,
+        "status": 200,
+        "latency_ms": 35.898447036743164,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 11,
+        "status": 200,
+        "latency_ms": 37.032127380371094,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 12,
+        "status": 200,
+        "latency_ms": 39.26992416381836,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 13,
+        "status": 200,
+        "latency_ms": 43.98703575134277,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 14,
+        "status": 200,
+        "latency_ms": 45.661211013793945,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 15,
+        "status": 200,
+        "latency_ms": 42.536020278930664,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 16,
+        "status": 200,
+        "latency_ms": 43.066978454589844,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 17,
+        "status": 200,
+        "latency_ms": 39.93487358093262,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 18,
+        "status": 200,
+        "latency_ms": 39.3526554107666,
+        "node": "unknown"
+    },
+    {
+        "prompt_id": 19,
+        "status": 200,
+        "latency_ms": 30.87449073791504,
+        "node": "unknown"
+    }
+]

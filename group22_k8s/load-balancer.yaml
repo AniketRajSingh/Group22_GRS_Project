@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-balancer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-balancer
+  template:
+    metadata:
+      labels:
+        app: load-balancer
+    spec:
+      containers:
+      - name: load-balancer
+        image: load-balancer:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        env:
+        - name: ROUTING_STRATEGY
+          value: "round-robin"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: load-balancer
+spec:
+  type: NodePort
+  selector:
+    app: load-balancer
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      nodePort: 30000

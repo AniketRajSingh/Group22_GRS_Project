@@ -1,0 +1,206 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-node-1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inference-cluster
+      node-id: node-1
+  template:
+    metadata:
+      labels:
+        app: inference-cluster
+        node-id: node-1
+    spec:
+      initContainers:
+      - name: model-downloader
+        image: python:3.10-slim-bookworm
+        command:
+        - sh
+        - -c
+        - |
+          if [ -f /models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf ]; then
+            echo "Model already exists, skipping download"
+          else
+            apt-get update && apt-get install -y wget
+            wget -q --show-progress -O /models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf \
+              https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+            echo "Model downloaded"
+          fi
+        volumeMounts:
+        - name: models
+          mountPath: /models
+      containers:
+      - name: inference-node
+        image: inference-node:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        env:
+        - name: NODE_ID
+          value: "k8s-node-1"
+        - name: N_THREADS
+          value: "2"
+        resources:
+          limits:
+            cpu: "1.0"
+            memory: "512Mi"
+        volumeMounts:
+        - name: models
+          mountPath: /models
+      volumes:
+      - name: models
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-node-1
+spec:
+  type: NodePort
+  selector:
+    node-id: node-1
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-node-2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inference-cluster
+      node-id: node-2
+  template:
+    metadata:
+      labels:
+        app: inference-cluster
+        node-id: node-2
+    spec:
+      initContainers:
+      - name: model-downloader
+        image: python:3.10-slim-bookworm
+        command:
+        - sh
+        - -c
+        - |
+          if [ -f /models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf ]; then
+            echo "Model already exists, skipping download"
+          else
+            apt-get update && apt-get install -y wget
+            wget -q --show-progress -O /models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf \
+              https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+            echo "Model downloaded"
+          fi
+        volumeMounts:
+        - name: models
+          mountPath: /models
+      containers:
+      - name: inference-node
+        image: inference-node:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        env:
+        - name: NODE_ID
+          value: "k8s-node-2"
+        - name: N_THREADS
+          value: "2"
+        resources:
+          limits:
+            cpu: "0.5"
+            memory: "512Mi"
+        volumeMounts:
+        - name: models
+          mountPath: /models
+      volumes:
+      - name: models
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-node-2
+spec:
+  type: NodePort
+  selector:
+    node-id: node-2
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30002
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-node-3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inference-cluster
+      node-id: node-3
+  template:
+    metadata:
+      labels:
+        app: inference-cluster
+        node-id: node-3
+    spec:
+      initContainers:
+      - name: model-downloader
+        image: python:3.10-slim-bookworm
+        command:
+        - sh
+        - -c
+        - |
+          if [ -f /models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf ]; then
+            echo "Model already exists, skipping download"
+          else
+            apt-get update && apt-get install -y wget
+            wget -q --show-progress -O /models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf \
+              https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+            echo "Model downloaded"
+          fi
+        volumeMounts:
+        - name: models
+          mountPath: /models
+      containers:
+      - name: inference-node
+        image: inference-node:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        env:
+        - name: NODE_ID
+          value: "k8s-node-3"
+        - name: N_THREADS
+          value: "2"
+        resources:
+          limits:
+            cpu: "1.0"
+            memory: "512Mi"
+        volumeMounts:
+        - name: models
+          mountPath: /models
+      volumes:
+      - name: models
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-node-3
+spec:
+  type: NodePort
+  selector:
+    node-id: node-3
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30003
