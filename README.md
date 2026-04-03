@@ -16,7 +16,10 @@ Most load balancers (e.g., Round Robin) do not consider real-time system resourc
 - `group22_inference_service/`: CPU-based LLM inference container using `llama-cpp-python`.
 - `group22_load_balancer/`: Middleware with hardware-aware routing logic.
 - `group22_benchmarks/`: Scripts for load generation and performance analysis.
+- `group22_dashboard/`: Frontend dashboard (Vite + React) for visual monitoring.
 - `group22_k8s/`: Kubernetes manifests.
+- `run.py`: Local automation entrypoint for startup and workflow execution.
+- `describe_graph.py`: LLM-assisted graph summary helper for report writing.
 
 ## Setup & Implementation Progress
 1. **Inference Service**:
@@ -42,6 +45,12 @@ pip install -r requirements.txt
 ```
 
 ## How to Run
+
+### 0. One-command Local Automation (Recommended)
+```bash
+python run.py
+```
+This starts the local workflow and automates the startup sequence for development runs.
 
 ### 1. Local Deployment (Docker Compose) — *Optional*
 For local-only testing on a single machine. Not needed if using Kubernetes (Step 2).
