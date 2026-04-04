@@ -11,12 +11,30 @@ logger = logging.getLogger("LoadBalancer")
 app = FastAPI(title="Modular Hardware-Aware Load Balancer")
 
 # Load settings from group22_config.py, allow ENV overrides
-NODES = group22_config.INFERENCE_NODES
+env_nodes = os.getenv("NODES")
+if env_nodes:
+    # Handle both "node1,node2" and "node1:8000,node2:8000" formats
+    NODES = []
+    for n in env_nodes.split(","):
+        n = n.strip()
+        if ":" not in n:
+            n = f"{n}:8000"
+        NODES.append(n)
+else:
+    NODES = group22_config.INFERENCE_NODES
+
 ROUTING_STRATEGY = os.getenv("ROUTING_STRATEGY", group22_config.ROUTING_STRATEGY)
 POLLING_INTERVAL = float(os.getenv("POLLING_INTERVAL", group22_config.POLLING_INTERVAL))
 
 collector = TelemetryCollector(NODES, polling_interval=POLLING_INTERVAL)
 collector.start()
+
+# Global persistent client to avoid socket exhaustion
+client = httpx.AsyncClient(timeout=3600.0)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await client.aclose()
 
 # For round-robin and tracking
 current_node_index = 0
@@ -58,28 +76,41 @@ def get_best_node_hardware_aware():
     return best_node or get_next_node_round_robin()
 
 @app.post("/infer")
-async def proxy_infer(request: Request):
+async def proxy_infer(request: Request, strategy: str = None):
     # Determine which node to use based on dynamic strategy
-    if ROUTING_STRATEGY == "round-robin":
+    effective_strategy = strategy or ROUTING_STRATEGY
+    
+    # Critical: Await JSON body FIRST to prevent asyncio yield from causing a race
+    # condition when selecting a hardware-aware node concurrently.
+    body = await request.json()
+    
+    if effective_strategy == "round-robin":
         target_node = get_next_node_round_robin()
     else:
         target_node = get_best_node_hardware_aware()
         
     target_url = f"http://{target_node}/infer"
-    logger.info(f"Routing to {target_node} [Active: {active_requests[target_node]}] using {ROUTING_STRATEGY}")
+    logger.info(f"Routing to {target_node} [Active: {active_requests[target_node]}] using {effective_strategy}")
     
-    body = await request.json()
     active_requests[target_node] += 1
     
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(target_url, json=body, timeout=120.0)
-            return response.json()
-        except Exception as e:
-            logger.error(f"Error proxying request to {target_node}: {e}")
-            raise HTTPException(status_code=502, detail=f"Target node {target_node} unreachable")
-        finally:
-            active_requests[target_node] -= 1
+    try:
+        resp = await client.post(
+            f"http://{target_node}/infer",
+            json=body
+        )
+        # Log any non-200 status for easier debugging
+        if resp.status_code != 200:
+            logger.warning(f"Node {target_node} returned status {resp.status_code}")
+            
+        return resp.json()
+    except Exception as e:
+        import traceback
+        error_msg = traceback.format_exc()
+        logger.error(f"Error proxying request to {target_node}: {e}\n{error_msg}")
+        raise HTTPException(status_code=502, detail=f"Target node {target_node} unreachable: {str(e)}")
+    finally:
+        active_requests[target_node] -= 1
 
 @app.get("/health")
 async def health():
@@ -92,7 +123,10 @@ async def health():
 
 @app.get("/telemetry")
 async def get_all_telemetry():
-    return collector.stats
+    return {
+        "stats": collector.stats, 
+        "active_requests": active_requests
+    }
 
 if __name__ == "__main__":
     import uvicorn
