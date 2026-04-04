@@ -1,61 +1,77 @@
 version: '3.8'
-
 services:
-  node-1:
+  inference-node-1:
     build: ./group22_inference_service
-    container_name: node-1
+    container_name: inference-node-1
+    ports:
+    - 8011:8000
     environment:
-      - NODE_ID=node-1
-      - N_THREADS=2
+    - NODE_ID=node-1
+    - N_THREADS=2
     volumes:
-      - ./models:/models
+    - ./models:/models
     deploy:
       resources:
         limits:
           cpus: '1.0'
           memory: 512M
-
-  node-2:
+  inference-node-2:
     build: ./group22_inference_service
-    container_name: node-2
+    container_name: inference-node-2
+    ports:
+    - 8012:8000
     environment:
-      - NODE_ID=node-2
-      - N_THREADS=2
+    - NODE_ID=node-2
+    - N_THREADS=2
     volumes:
-      - ./models:/models
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5' # Deliberately lower to test load balancing
-          memory: 512M
-
-  node-3:
-    build: ./group22_inference_service
-    container_name: node-3
-    environment:
-      - NODE_ID=node-3
-      - N_THREADS=2
-    volumes:
-      - ./models:/models
+    - ./models:/models
     deploy:
       resources:
         limits:
           cpus: '1.0'
-          memory: 512M
-
+          memory: 1024M
+  inference-node-3:
+    build: ./group22_inference_service
+    container_name: inference-node-3
+    ports:
+    - 8013:8000
+    environment:
+    - NODE_ID=node-3
+    - N_THREADS=2
+    volumes:
+    - ./models:/models
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1536M
+  inference-node-4:
+    build: ./group22_inference_service
+    container_name: inference-node-4
+    ports:
+    - 8014:8000
+    environment:
+    - NODE_ID=node-4
+    - N_THREADS=2
+    volumes:
+    - ./models:/models
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 2048M
   load_balancer:
-    build:
-      context: ./group22_load_balancer
-      dockerfile: Dockerfile
+    build: ./group22_load_balancer
     container_name: load_balancer
     ports:
-      - "8080:8080"
+    - 8080:8080
     environment:
-      - NODES=node-1,node-2,node-3
-      - ROUTING_STRATEGY=hardware-aware
+    - NODES=inference-node-1,inference-node-2,inference-node-3,inference-node-4
+    - ROUTING_STRATEGY=hardware-aware
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+    - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - node-1
-      - node-2
-      - node-3
+    - inference-node-1
+    - inference-node-2
+    - inference-node-3
+    - inference-node-4
