@@ -14,10 +14,10 @@ Most load balancers (e.g., Round Robin) do not consider real-time system resourc
 
 ## Project Structure
 - `group22_inference_service/`: CPU-based LLM inference container using `llama-cpp-python`.
-- `group22_load_balancer/`: Middleware with hardware-aware routing logic.
-- `group22_benchmarks/`: Scripts for load generation and performance analysis.
-- `group22_dashboard/`: Frontend dashboard (Vite + React) for visual monitoring.
-- `group22_k8s/`: Kubernetes manifests.
+- `group22_load_balancer/`: Middleware with hardware-aware routing logic and real-time telemetry collection.
+- `group22_benchmarks/`: Scripts for load generation and performance analysis (static + dynamic modes).
+- `group22_dashboard/`: **Live web UI (Vite + React) displaying real-time system metrics and performance dashboards**.
+- `group22_k8s/`: Kubernetes manifests for production deployment.
 - `run.py`: Local automation entrypoint for startup and workflow execution.
 - `describe_graph.py`: LLM-assisted graph summary helper for report writing.
 
@@ -82,6 +82,29 @@ Deploy the full distributed stack to the remote `lab` machine:
 
 After deployment, the cluster is accessible at `http://localhost:30000`.
 
+### 2.5 Live Dashboard & Real-Time Monitoring
+
+**The dashboard provides live visibility into all system dynamics as benchmarks run:**
+
+```bash
+# Open the dashboard in your browser (while benchmarks are running)
+# Local (Docker Compose)
+http://localhost:8080/dashboard  # or http://localhost:8080 with dashboard redirect
+
+# Remote (Kubernetes via SSH tunnel)
+http://localhost:30000/dashboard
+```
+
+**What you see on the dashboard:**
+- ✅ **Real-Time CPU & Memory Metrics**: Live tracking of each inference node's resource utilization
+- ✅ **Request Success Rate**: Instant overview of system reliability under load
+- ✅ **Latency Heatmaps**: Distribution of response times as requests complete
+- ✅ **Strategy Comparison**: Side-by-side metrics for Round-Robin vs Hardware-Aware routing
+- ✅ **Telemetry Stream**: Continuous metrics flow from load balancer middleware
+- ✅ **Error Tracking**: Real-time alerts for failed requests and bottlenecks
+
+The dashboard refreshes on a configurable interval (typically 2-5 seconds) and syncs with the middleware's telemetry collector, so you can watch system behavior unfold as you run load tests.
+
 ### 3. Running Benchmarks
 
 The load generator has a **3-phase startup** before collecting data:
@@ -112,12 +135,16 @@ python3 group22_benchmarks/group22_load_generator.py --url http://localhost:3000
 Results are saved to the `group22_results/` directory as JSON files.
 
 ### 4. Data Visualization
-Generate all performance charts from the collected results:
+
+The plotting system supports both **static offline** and **dynamic real-time** analysis modes:
+
+#### Static Plot Generation (Batch Analysis)
+Generate publication-ready charts from completed benchmark runs:
 ```bash
 python3 group22_benchmarks/group22_plot_results.py
 ```
 
-This generates the following charts in `group22_plots/`:
+This generates static charts in `group22_plots/`:
 | Chart | Description |
 | :--- | :--- |
 | `success_rate.png` | Success rate comparison (Normal vs Stress) |
@@ -126,6 +153,14 @@ This generates the following charts in `group22_plots/`:
 | `latency_{rr,ha}_{normal,stress}.png` | Individual latency histograms |
 | `global_dashboard.png` | Unified reliability + tail latency dashboard |
 | `breaking_point.png` | Success rate degradation as load ramps up |
+
+#### Dynamic Plot Generation (Live During Benchmarking)
+While benchmarks are running, metrics stream to the **live dashboard** in real-time:
+- Plots update as new data arrives from the load balancer telemetry
+- Visualizations refresh every N seconds for continuous monitoring
+- Useful for identifying bottlenecks and system behavior patterns during active load testing
+
+Access the dynamic dashboard at `http://localhost:8080/dashboard` (or `http://localhost:30000/dashboard` for remote K8s) while running benchmarks.
 
 ## Troubleshooting
 
