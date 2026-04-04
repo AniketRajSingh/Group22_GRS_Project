@@ -31,7 +31,7 @@ class TelemetryCollector:
         asyncio.run(self._collect_all())
 
     async def _collect_all(self):
-        async with httpx.AsyncClient(timeout=2.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             while self.running:
                 tasks = [self._fetch_node_stats(client, node) for node in self.nodes]
                 await asyncio.gather(*tasks)
@@ -54,8 +54,8 @@ class TelemetryCollector:
             else:
                 self.stats[node]["healthy"] = False
         except Exception as e:
-            # logger.warning(f"Node {node} unreachable: {e}")
-            self.stats[node] = {"healthy": False, "cpu_percent": 100}
+            logger.warning(f"Node {node} unreachable: {e}")
+            self.stats[node] = {"healthy": False, "cpu_percent": 0.0, "memory_mb": 0.0}
 
     def get_node_stats(self, node):
         return self.stats.get(node, {"healthy": False, "cpu_percent": 100})
