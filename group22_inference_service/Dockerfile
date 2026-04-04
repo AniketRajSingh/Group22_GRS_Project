@@ -50,4 +50,4 @@ RUN mkdir -p /models
 
 EXPOSE 8000
 
-CMD ["python", "group22_app.py"]
+CMD ["python", "-u", "group22_app.py"]
