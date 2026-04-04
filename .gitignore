@@ -1,0 +1,7 @@
+models
+__pycache__
+node_modules
+group22_results
+group22_plots
+.group22_logs/
+*.log
