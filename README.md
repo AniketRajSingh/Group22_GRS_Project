@@ -18,7 +18,7 @@ Most load balancers (e.g., Round Robin) do not consider real-time system resourc
 - `group22_benchmarks/`: Scripts for load generation and performance analysis (static + dynamic modes).
 - `group22_dashboard/`: **Live web UI (Vite + React) displaying real-time system metrics and performance dashboards**.
 - `group22_k8s/`: Kubernetes manifests for production deployment.
-- `run.py`: Local automation entrypoint for startup and workflow execution.
+- `run.py`: file for automation.
 - `describe_graph.py`: LLM-assisted graph summary helper for report writing.
 
 ## Setup & Implementation Progress
