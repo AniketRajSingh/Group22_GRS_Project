@@ -27,7 +27,7 @@ def analyze_json_results(filepath):
     for r in valid_results:
         node = r.get("node", "unknown")
         node_counts[node] = node_counts.get(node, 0) + 1
-
+#metrics for comparison
     stats = {
         "total_requests": len(data),
         "success_rate": (len(valid_results) / len(data)) * 100,
