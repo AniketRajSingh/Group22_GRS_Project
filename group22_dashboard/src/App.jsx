@@ -75,7 +75,7 @@ const LineChart = ({ data, dataKey, color, label, unit, isBadIfIncreasing = fals
   );
 };
 
-// ─── Multi-line Latency Overlay ────────────────────────────────────────────────
+// ─── Multi-latency Overlay ────────────────────────────────────────────────
 const LatencyMultiChart = ({ data }) => {
   const W = 600, H = 140, PAD = 22;
   const LINES = [
