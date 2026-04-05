@@ -1,4 +1,4 @@
-version: '3.8'
+#version: '3.8'
 services:
   inference-node-1:
     build: ./group22_inference_service
