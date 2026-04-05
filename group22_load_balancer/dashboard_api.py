@@ -99,7 +99,7 @@ def _run_benchmark_proc(req: BenchmarkRequest):
         env["BENCHMARK_TOKENS"] = str(req.tokens)
         
         cmd = [
-            "python3", os.path.join(BASE_DIR, "group22_benchmarks/group22_load_generator.py"),
+            "python3", "-u", os.path.join(BASE_DIR, "group22_benchmarks/group22_load_generator.py"),
             "--strategy", req.strategy,
             "--tag", "dynamic"
         ]
@@ -137,14 +137,25 @@ async def start_benchmark(req: BenchmarkRequest):
 async def get_benchmark_status():
     return _benchmark_status
 
+class PlotRequest(BaseModel):
+    strategies: List[str] = []
+
 @app.post("/api/generate-plots")
-async def generate_plots():
+async def generate_plots(req: Request):
     try:
-        # Use the specialized plotting script
+        body = await req.json()
+        strategies = body.get("strategies", [])
+    except Exception:
+        strategies = []
+        
+    try:
         cmd = [
             "python3", os.path.join(BASE_DIR, "group22_benchmarks/group22_plot_results.py"),
             "--type", "dynamic"
         ]
+        if strategies and isinstance(strategies, list) and len(strategies) > 0:
+            cmd.extend(["--strategies"] + strategies)
+            
         subprocess.run(cmd, check=True)
         return {"status": "success"}
     except Exception as e:

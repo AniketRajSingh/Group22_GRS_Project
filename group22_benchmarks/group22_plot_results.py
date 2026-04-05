@@ -10,7 +10,9 @@ import os
 # ── Colour palette ──────────────────────────────────────────────────
 C_RR  = '#E74C3C'   # red  – Round Robin
 C_HA  = '#2ECC71'   # green – Hardware Aware
-PAL   = {'Round-Robin': C_RR, 'Hardware-Aware': C_HA}
+C_LC  = '#3498DB'   # blue  – Least Connection
+C_HASH = '#F1C40F'  # yellow - Hashing
+PAL   = {'Round-Robin': C_RR, 'Hardware-Aware': C_HA, 'Least-Connection': C_LC, 'Hashing': C_HASH}
 
 def load_data(pattern, tag="static"):
     """Load JSON result files matching pattern and filtering by tag."""
@@ -35,6 +37,10 @@ def load_data(pattern, tag="static"):
             strategy = 'Round-Robin'
         elif 'hardware-aware' in bn_lower or '_ha_' in bn_lower:
             strategy = 'Hardware-Aware'
+        elif 'least-connection' in bn_lower or '_lc_' in bn_lower:
+            strategy = 'Least-Connection'
+        elif 'hashing' in bn_lower or '_hash_' in bn_lower:
+            strategy = 'Hashing'
         else:
             strategy = 'Unknown'
 
@@ -74,7 +80,7 @@ def plot_success_rate(df, out):
     sr = df.groupby(['load_type', 'strategy'])['success'].mean() * 100
     sr = sr.unstack('strategy').reindex(['Normal', 'Stress'])
     # Only use columns that exist to prevent KeyErrors if one strategy wasn't run
-    cols = [c for c in ['Round-Robin', 'Hardware-Aware'] if c in sr.columns]
+    cols = [c for c in ['Round-Robin', 'Hardware-Aware', 'Least-Connection', 'Hashing'] if c in sr.columns]
     sr = sr[cols]
 
     fig, ax = plt.subplots(figsize=(9, 6))
@@ -107,7 +113,7 @@ def plot_latency_bars(df_ok, out):
     for i, metric in enumerate(['Mean', 'p95']):
         ax = axes[i]
         subset = stats.pivot(index='load_type', columns='strategy', values=metric)
-        cols = [c for c in ['Round-Robin', 'Hardware-Aware'] if c in subset.columns]
+        cols = [c for c in ['Round-Robin', 'Hardware-Aware', 'Least-Connection', 'Hashing'] if c in subset.columns]
         subset = subset.reindex(['Normal', 'Stress'].copy())[cols]
         colors = [PAL[c] for c in cols]
         subset.plot.bar(ax=ax, color=colors, edgecolor='white', width=0.6)
@@ -137,21 +143,13 @@ def plot_latency_distribution(df_ok, out):
 
     g = sns.FacetGrid(plot_df, col='load_type_label', hue='Strategy',
                       col_order=['normal', 'stress'],
-                      hue_order=['Hardware-Aware', 'Round-Robin'],
-                      palette={'Hardware-Aware': C_HA, 'Round-Robin': C_RR},
+                      hue_order=[c for c in ['Hardware-Aware', 'Round-Robin', 'Least-Connection', 'Hashing'] if c in plot_df['Strategy'].unique()],
+                      palette=PAL,
                       height=5, aspect=1.3, sharex=False)
-    g.map(sns.kdeplot, 'latency_ms', fill=True, alpha=0.35, common_norm=False)
+    g.map(sns.kdeplot, 'latency_ms', fill=True, alpha=0.35, common_norm=False, log_scale=True)
     
-    # Set independent x-limits for each facet to handle the scale difference
-    for ax_idx, ax in enumerate(g.axes.flat):
-        load_name = ['normal', 'stress'][ax_idx]
-        subset = plot_df[plot_df['load_type_label'] == load_name]
-        if not subset.empty:
-            p95 = subset['latency_ms'].quantile(0.95)
-            ax.set_xlim(0, p95 * 1.5)
-
     g.add_legend(title='Strategy')
-    g.set_axis_labels('Latency (ms)', 'Density')
+    g.set_axis_labels('Latency (ms) [Log Scale]', 'Density')
     g.set_titles('load_type = {col_name}')
     g.fig.subplots_adjust(top=0.88)
     g.fig.suptitle('Inference Latency Distribution: Normal vs Stress', fontsize=16)
@@ -166,6 +164,10 @@ def plot_individual(df_ok, out):
         ('Round-Robin',    'Stress',  'latency_rr_stress.png'),
         ('Hardware-Aware', 'Normal',  'latency_ha_normal.png'),
         ('Hardware-Aware', 'Stress',  'latency_ha_stress.png'),
+        ('Least-Connection', 'Normal',  'latency_lc_normal.png'),
+        ('Least-Connection', 'Stress',  'latency_lc_stress.png'),
+        ('Hashing',        'Normal',  'latency_hash_normal.png'),
+        ('Hashing',        'Stress',  'latency_hash_stress.png'),
     ]
     for strat, load, fname in combos:
         sub = df_ok[(df_ok['strategy'] == strat) & (df_ok['load_type'] == load)]
@@ -174,7 +176,7 @@ def plot_individual(df_ok, out):
             continue
 
         fig, ax = plt.subplots(figsize=(10, 6))
-        color = C_RR if strat == 'Round-Robin' else C_HA
+        color = PAL.get(strat, C_RR)
 
         ax.hist(sub['latency_ms'], bins=20, color=color, alpha=0.7, edgecolor='white')
 
@@ -203,7 +205,7 @@ def plot_dashboard(df, df_ok, out):
     # Panel A – success rate
     sr = df.groupby(['load_type', 'strategy'])['success'].mean() * 100
     sr = sr.unstack('strategy').reindex(['Normal', 'Stress'].copy())
-    cols = [c for c in ['Round-Robin', 'Hardware-Aware'] if c in sr.columns]
+    cols = [c for c in ['Round-Robin', 'Hardware-Aware', 'Least-Connection', 'Hashing'] if c in sr.columns]
     sr = sr[cols]
     colors = [PAL[c] for c in cols]
     sr.plot.bar(ax=ax1, color=colors, edgecolor='white', width=0.6)
@@ -219,7 +221,7 @@ def plot_dashboard(df, df_ok, out):
     if not df_ok.empty:
         p95 = df_ok.groupby(['load_type', 'strategy'])['latency_ms'].quantile(0.95)
         p95 = p95.unstack('strategy').reindex(['Normal', 'Stress'].copy())
-        cols = [c for c in ['Round-Robin', 'Hardware-Aware'] if c in p95.columns]
+        cols = [c for c in ['Round-Robin', 'Hardware-Aware', 'Least-Connection', 'Hashing'] if c in p95.columns]
         p95 = p95[cols]
         colors = [PAL[c] for c in cols]
         p95.plot.bar(ax=ax2, color=colors, edgecolor='white', width=0.6)
@@ -252,9 +254,9 @@ def plot_breaking_point(out='plots'):
     fig, ax1 = plt.subplots(figsize=(12, 7))
     ax2 = ax1.twinx()
 
-    colors_sr  = {'Round-Robin': C_RR, 'Hardware-Aware': C_HA,
-                  'round-robin': C_RR, 'hardware-aware': C_HA,
-                  'rr': C_RR, 'ha': C_HA}
+    colors_sr  = {'Round-Robin': C_RR, 'Hardware-Aware': C_HA, 'Least-Connection': C_LC, 'Hashing': C_HASH,
+                  'round-robin': C_RR, 'hardware-aware': C_HA, 'least-connection': C_LC, 'hashing': C_HASH,
+                  'rr': C_RR, 'ha': C_HA, 'lc': C_LC, 'hash': C_HASH}
     
     for f in files:
         bn = os.path.basename(f).lower()
@@ -262,6 +264,10 @@ def plot_breaking_point(out='plots'):
             label = 'Round-Robin'
         elif 'hardware-aware' in bn or '_ha_' in bn:
             label = 'Hardware-Aware'
+        elif 'least-connection' in bn or '_lc_' in bn:
+            label = 'Least-Connection'
+        elif 'hashing' in bn or '_hash_' in bn:
+            label = 'Hashing'
         else:
             label = os.path.basename(f)
 
@@ -297,7 +303,7 @@ def plot_breaking_point(out='plots'):
     print('  ✓ group22_breaking_point.png')
 
 # ── Main ────────────────────────────────────────────────────────────
-def generate_all(out='group22_plots', tag='static'):
+def generate_all(out='group22_plots', tag='static', strategies=None):
     # 1. Load data
     pattern = "group22_results/*.json"
     df = load_data(pattern, tag)
@@ -305,6 +311,12 @@ def generate_all(out='group22_plots', tag='static'):
     if df.empty:
         print(f"  ⚠ No data found for tag '{tag}' in group22_results/")
         return
+
+    if strategies and len(strategies) > 0:
+        df = df[df['strategy'].isin(strategies)]
+        if df.empty:
+            print(f"  ⚠ No data left after filtering for strategies: {strategies}")
+            return
 
     os.makedirs(out, exist_ok=True)
 
@@ -339,7 +351,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate plots from benchmark results.')
     parser.add_argument('--type', choices=['static', 'dynamic'], default='static', 
                         help='Type of plots to generate (determines output subdirectory and data filter).')
+    parser.add_argument('--strategies', nargs='+', default=None, 
+                        help='Filter by specific strategies (e.g. Round-Robin Hardware-Aware)')
     args = parser.parse_args()
     
     out_dir = f'group22_plots/{args.type}'
-    generate_all(out=out_dir, tag=args.type)
+    generate_all(out=out_dir, tag=args.type, strategies=args.strategies)

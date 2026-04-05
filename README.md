@@ -30,7 +30,7 @@ Most load balancers (e.g., Round Robin) do not consider real-time system resourc
 2. **Load Balancer**:
     - [x] HTTP-based Telemetry Collector (Universal Support).
     - [x] Weighted "Burden Score" routing logic.
-    - [x] Round Robin / Hardware-Aware dynamic strategy switching.
+    - [x] Quad-Strategy Routing: Hardware-Aware, Round-Robin, Least-Connection, and Prompty-Hashing algorithms.
 
 3. **Orchestration & Deployment**:
     - [x] `docker-compose` setup for local development.
@@ -98,9 +98,9 @@ http://localhost:30000/dashboard
 **What you see on the dashboard:**
 - ✅ **Real-Time CPU & Memory Metrics**: Live tracking of each inference node's resource utilization
 - ✅ **Request Success Rate**: Instant overview of system reliability under load
-- ✅ **Latency Heatmaps**: Distribution of response times as requests complete
-- ✅ **Strategy Comparison**: Side-by-side metrics for Round-Robin vs Hardware-Aware routing
-- ✅ **Telemetry Stream**: Continuous metrics flow from load balancer middleware
+- ✅ **Latency Heatmaps**: Distribution of response times mathematically rendered on dynamic Logarithmic Scales.
+- ✅ **Dynamic Selection Matrices**: On-the-fly interactive toggles to pair any combination of load balancers head-to-head in the galleries.
+- ✅ **Real-Time Data Streaming**: Unbuffered backend piping delivering immediate performance trace logs directly to the browser console without chunk-delays.
 - ✅ **Error Tracking**: Real-time alerts for failed requests and bottlenecks
 
 The dashboard refreshes on a configurable interval (typically 2-5 seconds) and syncs with the middleware's telemetry collector, so you can watch system behavior unfold as you run load tests.

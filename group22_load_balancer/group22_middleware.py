@@ -1,9 +1,11 @@
 from fastapi import FastAPI, Request, HTTPException
+from typing import Optional, Dict
 import httpx
 import logging
 import group22_config
 from group22_telemetry import TelemetryCollector
 import os
+import hashlib
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LoadBalancer")
@@ -75,8 +77,32 @@ def get_best_node_hardware_aware():
             
     return best_node or get_next_node_round_robin()
 
+def get_node_least_connection():
+    best_node = None
+    min_reqs = 9999999 # type: int
+    healthy_nodes = [n for n in NODES if collector.get_node_stats(n).get("healthy", False)]
+    if not healthy_nodes:
+        return NODES[0]
+        
+    for name in healthy_nodes:
+        reqs = active_requests.get(name, 0)
+        if reqs < min_reqs:
+            min_reqs = reqs
+            best_node = name
+    return best_node or get_next_node_round_robin()
+
+def get_node_hashing(body: dict):
+    healthy_nodes = [n for n in NODES if collector.get_node_stats(n).get("healthy", False)]
+    if not healthy_nodes:
+        return NODES[0]
+    
+    prompt = body.get("prompt", "")
+    hash_val = int(hashlib.md5(prompt.encode('utf-8')).hexdigest(), 16)
+    
+    return healthy_nodes[hash_val % len(healthy_nodes)]
+
 @app.post("/infer")
-async def proxy_infer(request: Request, strategy: str = None):
+async def proxy_infer(request: Request, strategy: Optional[str] = None):
     # Determine which node to use based on dynamic strategy
     effective_strategy = strategy or ROUTING_STRATEGY
     
@@ -84,10 +110,15 @@ async def proxy_infer(request: Request, strategy: str = None):
     # condition when selecting a hardware-aware node concurrently.
     body = await request.json()
     
+    target_node: str = ""
     if effective_strategy == "round-robin":
-        target_node = get_next_node_round_robin()
+        target_node = str(get_next_node_round_robin())
+    elif effective_strategy == "least-connection":
+        target_node = str(get_node_least_connection())
+    elif effective_strategy == "hashing":
+        target_node = str(get_node_hashing(body))
     else:
-        target_node = get_best_node_hardware_aware()
+        target_node = str(get_best_node_hardware_aware())
         
     target_url = f"http://{target_node}/infer"
     logger.info(f"Routing to {target_node} [Active: {active_requests[target_node]}] using {effective_strategy}")

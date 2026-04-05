@@ -45,28 +45,13 @@ services:
         limits:
           cpus: '0.5'
           memory: 1536M
-  inference-node-4:
-    build: ./group22_inference_service
-    container_name: inference-node-4
-    ports:
-    - 8014:8000
-    environment:
-    - NODE_ID=node-4
-    - N_THREADS=2
-    volumes:
-    - ./models:/models
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 2048M
   load_balancer:
     build: ./group22_load_balancer
     container_name: load_balancer
     ports:
     - 8080:8080
     environment:
-    - NODES=inference-node-1,inference-node-2,inference-node-3,inference-node-4
+    - NODES=inference-node-1,inference-node-2,inference-node-3
     - ROUTING_STRATEGY=hardware-aware
     volumes:
     - /var/run/docker.sock:/var/run/docker.sock
@@ -74,4 +59,3 @@ services:
     - inference-node-1
     - inference-node-2
     - inference-node-3
-    - inference-node-4

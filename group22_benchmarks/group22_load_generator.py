@@ -6,15 +6,16 @@ import argparse
 import sys
 import os
 
-async def send_request(session, url, prompt_id, max_tokens):
+async def send_request(session, url, prompt_id, max_tokens, strategy=None):
     """Sends a single inference request and returns performance metrics."""
     payload = {
         "prompt": f"Write a short story about task {prompt_id}",
         "max_tokens": max_tokens
     }
+    target_url = f"{url}?strategy={strategy}" if strategy else url
     start_time = time.time()
     try:
-        async with session.post(url, json=payload, timeout=3600) as response:
+        async with session.post(target_url, json=payload, timeout=3600) as response:
             result = await response.json()
             latency = (time.time() - start_time) * 1000
             return {
@@ -32,10 +33,10 @@ async def send_request(session, url, prompt_id, max_tokens):
             "node": "unknown"
         }
 
-async def run_benchmark(url, concurrent_requests, total_requests, max_tokens):
+async def run_benchmark(url, concurrent_requests, total_requests, max_tokens, strategy):
     """Runs a benchmark suite with controlled concurrency and live progress reporting."""
     print(f"Starting benchmark on {url}")
-    print(f"Strategy params -> Concurrent: {concurrent_requests}, Total: {total_requests}, Tokens: {max_tokens}")
+    print(f"Strategy params -> Concurrent: {concurrent_requests}, Total: {total_requests}, Tokens: {max_tokens}, Strategy: {strategy}")
     
     results = []
     # Use a semaphore to strictly respect the concurrency limit
@@ -43,7 +44,7 @@ async def run_benchmark(url, concurrent_requests, total_requests, max_tokens):
 
     async def wrapped_request(session, url, i, tokens):
         async with sem:
-            return await send_request(session, url, i, tokens)
+            return await send_request(session, url, i, tokens, strategy)
 
     async with aiohttp.ClientSession() as session:
         # Create all tasks
@@ -100,7 +101,7 @@ async def warm_up(url, rounds=1):
     print(f"🔥 Warming up with {rounds} sequential requests ...")
     async with aiohttp.ClientSession() as session:
         for i in range(rounds):
-            await send_request(session, url, f"warmup_{i}", 10)
+            await send_request(session, url, f"warmup_{i}", 10, "round-robin")
     print("   Warm-up complete.\n")
 
 def cooldown(seconds=1):
@@ -143,7 +144,7 @@ if __name__ == "__main__":
 
     # Step 4: Run benchmark
     print("=" * 60)
-    results = asyncio.run(run_benchmark(args.url, concurrent, total, tokens))
+    results = asyncio.run(run_benchmark(args.url, concurrent, total, tokens, args.strategy))
     
     # Step 5: Save final results
     save_results_with_tag(results, args.strategy, load_type, args.tag)

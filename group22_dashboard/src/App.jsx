@@ -420,6 +420,7 @@ const NodeConfigurator = () => {
 const App = () => {
   const [telemetry, setTelemetry]         = useState({});
   const [strategy, setStrategy]           = useState('hardware-aware');
+  const [compareStrategies, setCompareStrategies] = useState(['Hardware-Aware', 'Least-Connection']);
   const [loadParams, setLoadParams]       = useState({ concurrent: 2, total: 20, tokens: 20 });
   const [benchmarkStatus, setBenchmarkStatus] = useState({ running: false, logs: [], strategy: '', live_data: [] });
   const [generating, setGenerating]       = useState(false);
@@ -521,11 +522,21 @@ const App = () => {
     const t = setInterval(() => setCountdown(prev => {
       if (prev <= 1) {
         clearInterval(t);
-        fetch('/api/generate-plots', { method: 'POST' }).then(() => { setPlotTimestamp(Date.now()); setGenerating(false); });
+        fetch('/api/generate-plots', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ strategies: compareStrategies })
+        }).then(() => { setPlotTimestamp(Date.now()); setGenerating(false); });
         return 0;
       }
       return prev - 1;
     }), 1000);
+  };
+
+  const toggleCompare = (s) => {
+    setCompareStrategies(prev => 
+      prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+    );
   };
 
   const exportReport = () => {
@@ -587,16 +598,25 @@ const App = () => {
   const avgRam      = telVals.length > 0 ? telVals.reduce((a, n) => a + (n.memory_mb  || 0), 0) / telVals.length : 0;
   const srColor     = successRate === null ? C.slateL : successRate >= 99 ? C.emerald : successRate >= 95 ? C.amber : C.rose;
 
-  const ALL_PLOTS = [
+  const strategyDetails = {
+    'Hardware-Aware': { id: 'ha', label: 'HA' },
+    'Round-Robin': { id: 'rr', label: 'RR' },
+    'Least-Connection': { id: 'lc', label: 'LC' },
+    'Hashing': { id: 'hash', label: 'Hash' }
+  };
+  const activePlots = [
     { id: 'latency_comparison',   label: 'Latency Comparison'   },
     { id: 'latency_distribution', label: 'Latency Distribution' },
-    { id: 'success_rate',         label: 'Success Rate'         },
-    { id: 'latency_rr_normal',    label: 'RR — Normal Load'     },
-    { id: 'latency_rr_stress',    label: 'RR — Stress Load'     },
-    { id: 'latency_ha_normal',    label: 'HA — Normal Load'     },
-    { id: 'latency_ha_stress',    label: 'HA — Stress Load'     },
-    { id: 'global_dashboard',     label: 'Global Dashboard'     },
+    { id: 'success_rate',         label: 'Success Rate'         }
   ];
+  compareStrategies.forEach(s => {
+    const details = strategyDetails[s];
+    if (details) {
+      activePlots.push({ id: `latency_${details.id}_normal`, label: `${details.label} — Normal Load` });
+      activePlots.push({ id: `latency_${details.id}_stress`, label: `${details.label} — Stress Load` });
+    }
+  });
+  activePlots.push({ id: 'global_dashboard', label: 'Global Dashboard' });
 
   return (
     <div className="dashboard-root">
@@ -648,6 +668,8 @@ const App = () => {
             {[
               { id: 'hardware-aware', emoji: '🔥', name: 'Hardware-Aware', desc: 'Routes to least-loaded node via telemetry.' },
               { id: 'round-robin',    emoji: '🔄', name: 'Round Robin',     desc: 'Cyclic request distribution.' },
+              { id: 'least-connection', emoji: '⚖️', name: 'Least Connection', desc: 'Routes to node with fewest active requests.' },
+              { id: 'hashing',        emoji: '🔑', name: 'Hashing',         desc: 'Deterministic routing by prompt content.' },
             ].map(s => (
               <div key={s.id} className={`strategy-card ${strategy === s.id ? 'strategy-active' : ''}`}
                 onClick={() => setStrategy(s.id)}>
@@ -788,7 +810,16 @@ const App = () => {
           <div className="section-header">
             <div>
               <h2 className="section-title">Performance Comparison Gallery</h2>
-              <p className="section-sub">8 benchmark visualizations · post-wave analytical output</p>
+              <p className="section-sub">Select strategies to compare (Click 'Update Analytics' to apply)</p>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.85rem', color: '#cbd5e1' }}>
+                {['Hardware-Aware', 'Round-Robin', 'Least-Connection', 'Hashing'].map(s => (
+                  <label key={s} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={compareStrategies.includes(s)} 
+                      onChange={() => toggleCompare(s)} style={{ cursor: 'pointer' }} />
+                    {s}
+                  </label>
+                ))}
+              </div>
             </div>
             <button className="btn btn-accent-sm" onClick={generatePlots}
               disabled={generating || benchmarkStatus.running}>
@@ -796,7 +827,7 @@ const App = () => {
             </button>
           </div>
           <div className="plot-grid">
-            {ALL_PLOTS.map(plot => (
+            {activePlots.map(plot => (
               <div key={plot.id} className="plot-item">
                 <p className="plot-label">
                   <span className="plot-dot"></span>{plot.label}
