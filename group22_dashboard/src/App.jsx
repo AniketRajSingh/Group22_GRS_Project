@@ -3,14 +3,14 @@ import './App.css';
 
 // ─── Colour tokens ─────────────────────────────────────────────────────────────
 const C = {
-  indigo:  '#6366f1', indigoD: '#4f46e5',
-  violet:  '#8b5cf6',
+  indigo: '#6366f1', indigoD: '#4f46e5',
+  violet: '#8b5cf6',
   emerald: '#10b981', emeraldD: '#059669',
-  amber:   '#f59e0b',
-  sky:     '#0ea5e9',
-  rose:    '#f43f5e',
-  pink:    '#ec4899',
-  slate:   '#64748b', slateL: '#94a3b8', slateXL: '#f1f5f9',
+  amber: '#f59e0b',
+  sky: '#0ea5e9',
+  rose: '#f43f5e',
+  pink: '#ec4899',
+  slate: '#64748b', slateL: '#94a3b8', slateXL: '#f1f5f9',
 };
 
 // ─── Chart helpers ─────────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ const LineChart = ({ data, dataKey, color, label, unit, isBadIfIncreasing = fals
   const dRange = Math.max(0.001, pMax - pMin);
 
   const latest = data.length > 0 ? data[data.length - 1][dataKey] : null;
-  const prev   = data.length > 1 ? data[data.length - 2][dataKey] : null;
+  const prev = data.length > 1 ? data[data.length - 2][dataKey] : null;
   const rising = latest !== null && prev !== null && latest > prev;
   const trendColor = data.length >= 2 && latest !== prev
     ? (rising ? (isBadIfIncreasing ? C.rose : C.emerald) : (isBadIfIncreasing ? C.emerald : C.rose))
@@ -79,16 +79,16 @@ const LineChart = ({ data, dataKey, color, label, unit, isBadIfIncreasing = fals
 const LatencyMultiChart = ({ data }) => {
   const W = 600, H = 140, PAD = 22;
   const LINES = [
-    { key: 'lat', label: 'Mean', color: C.indigo  },
-    { key: 'p95', label: 'P95',  color: C.amber   },
-    { key: 'p99', label: 'P99',  color: C.rose    },
+    { key: 'lat', label: 'Mean', color: C.indigo },
+    { key: 'p95', label: 'P95', color: C.amber },
+    { key: 'p99', label: 'P99', color: C.rose },
   ];
   const allVals = data.flatMap(d => LINES.map(l => d[l.key] || 0)).filter(v => v > 0);
-  const minV  = Math.min(...(allVals.length ? allVals : [0]));
-  const maxV  = Math.max(...(allVals.length ? allVals : [1]));
+  const minV = Math.min(...(allVals.length ? allVals : [0]));
+  const maxV = Math.max(...(allVals.length ? allVals : [1]));
   const range = Math.max(1, maxV - minV);
-  const pMin  = Math.max(0, minV - range * 0.08);
-  const pMax  = maxV + range * 0.12;
+  const pMin = Math.max(0, minV - range * 0.08);
+  const pMax = maxV + range * 0.12;
   const dRange = Math.max(0.001, pMax - pMin);
 
   return (
@@ -171,7 +171,7 @@ const SuccessRateChart = ({ data }) => {
 const BurdenCompareChart = ({ telemetry }) => {
   const W = 300, H = 110, PAD = 20;
   const nodes = Object.entries(telemetry).sort(([a], [b]) => a.localeCompare(b));
-  
+
   const scores = nodes.map(([id, stats]) => {
     const cpu = stats.cpu_percent || 0;
     const memPct = ((stats.memory_mb || 0) / 2048) * 100;
@@ -184,9 +184,9 @@ const BurdenCompareChart = ({ telemetry }) => {
   const maxVal = Math.max(10, ...scores.map(s => s.val));
   const pMax = maxVal * 1.2;
   const dRange = Math.max(0.1, pMax - pMin);
-  
-  const strongest = [...scores].sort((a,b) => a.val - b.val)[0];
-  
+
+  const strongest = [...scores].sort((a, b) => a.val - b.val)[0];
+
   return (
     <div className="chart-wrapper">
       <div className="chart-label">
@@ -209,8 +209,8 @@ const BurdenCompareChart = ({ telemetry }) => {
           return (
             <g key={s.id}>
               <rect x={x} y={y} width={barW} height={barH} fill={isStrongest ? C.emerald : C.violet} rx="4" />
-              <text x={x + barW/2} y={H - PAD + 12} fontSize="10" fill={C.slateL} textAnchor="middle">{s.id}</text>
-              <text x={x + barW/2} y={y - 4} fontSize="9" fill={C.slate} textAnchor="middle" fontWeight="bold">{s.val.toFixed(1)}</text>
+              <text x={x + barW / 2} y={H - PAD + 12} fontSize="10" fill={C.slateL} textAnchor="middle">{s.id}</text>
+              <text x={x + barW / 2} y={y - 4} fontSize="9" fill={C.slate} textAnchor="middle" fontWeight="bold">{s.val.toFixed(1)}</text>
             </g>
           );
         })}
@@ -239,7 +239,7 @@ const NodeConfigurator = () => {
         setNodes(data.current_nodes.map(n => ({ cpu: n.cpu, memory_mb: n.memory_mb })));
         setNodeCount(data.current_nodes.length);
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   // Poll deploy status when running
@@ -271,14 +271,14 @@ const NodeConfigurator = () => {
     setNodes(prev => prev.map((n, idx) => idx === i ? { ...n, [key]: val } : n));
   };
 
-  const totalCpu  = nodes.reduce((a, n) => a + (n.cpu || 0), 0);
-  const totalRam  = nodes.reduce((a, n) => a + (n.memory_mb || 0), 0);
-  const sysCpu    = sysInfo?.system.total_cpu || 4;
-  const sysRam    = sysInfo?.system.total_ram_mb || 8192;
-  const cpuPct    = Math.min(100, (totalCpu / sysCpu) * 100);
-  const ramPct    = Math.min(100, (totalRam / sysRam) * 100);
-  const cpuOk     = totalCpu <= sysCpu;
-  const ramOk     = totalRam <= sysRam;
+  const totalCpu = nodes.reduce((a, n) => a + (n.cpu || 0), 0);
+  const totalRam = nodes.reduce((a, n) => a + (n.memory_mb || 0), 0);
+  const sysCpu = sysInfo?.system.total_cpu || 4;
+  const sysRam = sysInfo?.system.total_ram_mb || 8192;
+  const cpuPct = Math.min(100, (totalCpu / sysCpu) * 100);
+  const ramPct = Math.min(100, (totalRam / sysRam) * 100);
+  const cpuOk = totalCpu <= sysCpu;
+  const ramOk = totalRam <= sysRam;
 
   const deploy = async () => {
     setError('');
@@ -406,7 +406,7 @@ const NodeConfigurator = () => {
               lineHeight: 1.7
             }}>
               {deployStatus.logs.map((l, i) => <div key={i}>{l}</div>)}
-              {deployStatus.success === true  && <div style={{ color: '#4ade80', fontWeight: 700, marginTop: 4 }}>✅ Cluster is live!</div>}
+              {deployStatus.success === true && <div style={{ color: '#4ade80', fontWeight: 700, marginTop: 4 }}>✅ Cluster is live!</div>}
               {deployStatus.success === false && <div style={{ color: '#f87171', fontWeight: 700, marginTop: 4 }}>❌ Deploy failed. Check logs.</div>}
             </div>
           )}
@@ -418,64 +418,93 @@ const NodeConfigurator = () => {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 const App = () => {
-  const [telemetry, setTelemetry]         = useState({});
-  const [strategy, setStrategy]           = useState('hardware-aware');
+  const [telemetry, setTelemetry] = useState({});
+  const [strategy, setStrategy] = useState('hardware-aware');
   const [compareStrategies, setCompareStrategies] = useState(['Hardware-Aware', 'Least-Connection']);
-  const [loadParams, setLoadParams]       = useState({ concurrent: 2, total: 20, tokens: 20 });
+  const [loadParams, setLoadParams] = useState({ concurrent: 2, total: 20, tokens: 20 });
   const [benchmarkStatus, setBenchmarkStatus] = useState({ running: false, logs: [], strategy: '', live_data: [] });
-  const [generating, setGenerating]       = useState(false);
-  const [countdown, setCountdown]         = useState(0);
+  const [generating, setGenerating] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const [plotTimestamp, setPlotTimestamp] = useState(Date.now());
-  const [report, setReport]               = useState('');
-  const [reportStatus, setReportStatus]   = useState({ running: false, progress: 0, current_graph: '', completed: [] });
+  const [report, setReport] = useState('');
+  const [reportStatus, setReportStatus] = useState({ running: false, progress: 0, current_graph: '', completed: [] });
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [startTime, setStartTime]         = useState(Date.now());
+  const [startTime, setStartTime] = useState(Date.now());
   const [telemetryHistory, setTelemetryHistory] = useState([]);
-  const [liveData, setLiveData]           = useState([]);
+  const [liveData, setLiveData] = useState([]);
+  const [autoStatus, setAutoStatus] = useState({ running: false, phase: '', completed: 0, total: 8, log: [], finished: false, current_strategy: '', current_load: '' });
 
-  const consoleRef    = useRef(null);
+  const consoleRef = useRef(null);
+  const autoLogRef = useRef(null);
   const loadParamsRef = useRef(loadParams);
-  const liveDataRef   = useRef([]);
+  const liveDataRef = useRef([]);
 
   useEffect(() => { loadParamsRef.current = loadParams; }, [loadParams]);
-  useEffect(() => { liveDataRef.current   = liveData;   }, [liveData]);
+  useEffect(() => { liveDataRef.current = liveData; }, [liveData]);
   useEffect(() => {
     if (consoleRef.current) consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
   }, [benchmarkStatus.logs]);
+  useEffect(() => {
+    if (autoLogRef.current) autoLogRef.current.scrollTop = autoLogRef.current.scrollHeight;
+  }, [autoStatus.log]);
+
+  // ── Auto-Benchmark Orchestrator Polling ─────────────────────────────────────
+  useEffect(() => {
+    if (!autoStatus.running) return;
+    const id = setInterval(() => {
+      fetch('/api/auto-benchmark-status').then(r => r.json()).then(data => {
+        setAutoStatus(data);
+        if (!data.running) {
+          clearInterval(id);
+          // Auto-refresh plots when done
+          if (data.finished) setPlotTimestamp(Date.now());
+        }
+      }).catch(() => { });
+    }, 1500);
+    return () => clearInterval(id);
+  }, [autoStatus.running]);
+
+  const startAutoSuite = async () => {
+    try {
+      const res = await fetch('/api/auto-benchmark', { method: 'POST' });
+      if (res.ok) {
+        setAutoStatus(prev => ({ ...prev, running: true, phase: 'Initializing...', completed: 0, log: [], finished: false }));
+        setCompareStrategies(['Hardware-Aware', 'Round-Robin', 'Least-Connection', 'Hashing']);
+      }
+    } catch (e) { console.error(e); }
+  };
 
   // ── Telemetry ───────────────────────────────────────────────────────────────
   useEffect(() => {
+    const pollInterval = benchmarkStatus.running ? 500 : 2000;
     const id = setInterval(() => {
       fetch('/api/telemetry').then(r => r.json()).then(data => {
         if (!data.stats) return;
         setTelemetry(data.stats);
         const nodes = Object.values(data.stats);
         const avgCpu = nodes.reduce((a, n) => a + (n.cpu_percent || 0), 0) / (nodes.length || 1);
-        const avgRam = nodes.reduce((a, n) => a + (n.memory_mb  || 0), 0) / (nodes.length || 1);
-        const lData  = liveDataRef.current;
-        const params = loadParamsRef.current;
-        let lat = 12 + Math.random() * 4, p95 = 18 + Math.random() * 6,
-            p99 = 22 + Math.random() * 8, thr = Math.random() * 2, suc = 100;
-        if (params.concurrent > 5) { lat += 10; p95 += 15; p99 += 25; }
+        const avgRam = nodes.reduce((a, n) => a + (n.memory_mb || 0), 0) / (nodes.length || 1);
+        const lData = liveDataRef.current;
+        // Only compute latency/throughput stats when live benchmark data exists
         if (lData.length > 0) {
-          const rec    = lData.slice(-20);
+          const rec = lData.slice(-20);
           const latArr = rec.map(p => p.latency_ms);
           const sorted = [...latArr].sort((a, b) => a - b);
-          lat  = latArr.reduce((a, b) => a + b, 0) / latArr.length;
-          p95  = sorted[Math.floor(sorted.length * 0.95)] || lat * 1.5;
-          p99  = sorted[Math.floor(sorted.length * 0.99)] || lat * 2.0;
+          let lat = latArr.reduce((a, b) => a + b, 0) / latArr.length;
+          let p95 = sorted[Math.floor(sorted.length * 0.95)] || lat * 1.5;
+          let p99 = sorted[Math.floor(sorted.length * 0.99)] || lat * 2.0;
           const windowElapsed = rec.length > 1 ? Math.max(0.1, rec[rec.length - 1].timestamp - rec[0].timestamp) : Math.max(0.1, (Date.now() - startTime) / 1000);
-          thr  = rec.length / windowElapsed;
-          suc  = rec.filter(p => p.status === 200).length / rec.length * 100;
-          lat += (Math.random() - 0.5) * lat * 0.04;
-          p95 += (Math.random() - 0.5) * p95 * 0.03;
-          p99 += (Math.random() - 0.5) * p99 * 0.03;
+          const thr = rec.length / windowElapsed;
+          const suc = rec.filter(p => p.status === 200).length / rec.length * 100;
+          setTelemetryHistory(prev => [...prev.slice(-49), { cpu: avgCpu, ram: avgRam, lat, p95, p99, thr, suc }]);
+        } else {
+          // Idle mode: only track CPU/RAM, no fake latency data
+          setTelemetryHistory(prev => [...prev.slice(-49), { cpu: avgCpu, ram: avgRam, lat: 0, p95: 0, p99: 0, thr: 0, suc: 100 }]);
         }
-        setTelemetryHistory(prev => [...prev.slice(-49), { cpu: avgCpu, ram: avgRam, lat, p95, p99, thr, suc }]);
-      }).catch(() => {});
-    }, 100);
+      }).catch(() => { });
+    }, pollInterval);
     return () => clearInterval(id);
-  }, [startTime]);
+  }, [startTime, benchmarkStatus.running]);
 
   // ── Benchmark Status ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -483,8 +512,8 @@ const App = () => {
       fetch('/api/benchmark-status').then(r => r.json()).then(data => {
         setBenchmarkStatus(data);
         if (data.live_data) setLiveData(data.live_data);
-      }).catch(() => {});
-    }, 100);
+      }).catch(() => { });
+    }, 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -497,14 +526,14 @@ const App = () => {
         setReportStatus(data);
         if (data.report) setReport(data.report);
         if (!data.running) { setIsGeneratingReport(false); clearInterval(id); }
-      } catch (e) {}
+      } catch (e) { }
     }, 2000);
     return () => clearInterval(id);
   }, [isGeneratingReport]);
 
   const startBenchmark = () => {
     setLiveData([]); setStartTime(Date.now());
-    fetch('/api/benchmark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...loadParams, strategy }) }).catch(() => {});
+    fetch('/api/benchmark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...loadParams, strategy }) }).catch(() => { });
   };
 
   const generateReport = async () => {
@@ -514,7 +543,7 @@ const App = () => {
   };
 
   const stopReport = async () => {
-    try { await fetch('/api/cancel-report', { method: 'POST' }); } catch (e) {}
+    try { await fetch('/api/cancel-report', { method: 'POST' }); } catch (e) { }
   };
 
   const generatePlots = () => {
@@ -522,10 +551,10 @@ const App = () => {
     const t = setInterval(() => setCountdown(prev => {
       if (prev <= 1) {
         clearInterval(t);
-        fetch('/api/generate-plots', { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ strategies: compareStrategies })
+        fetch('/api/generate-plots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ strategies: compareStrategies })
         }).then(() => { setPlotTimestamp(Date.now()); setGenerating(false); });
         return 0;
       }
@@ -534,7 +563,7 @@ const App = () => {
   };
 
   const toggleCompare = (s) => {
-    setCompareStrategies(prev => 
+    setCompareStrategies(prev =>
       prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
     );
   };
@@ -579,24 +608,24 @@ const App = () => {
     return text.split('\n').map((line, i) => {
       if (line.startsWith('## 🏁') || line.startsWith('## 📌') || line.startsWith('## 🗂️'))
         return <h2 key={i} className="report-h2-accent">{line.substring(3)}</h2>;
-      if (line.startsWith('# '))  return <h1 key={i} className="report-h1">{line.substring(2)}</h1>;
+      if (line.startsWith('# ')) return <h1 key={i} className="report-h1">{line.substring(2)}</h1>;
       if (line.startsWith('## ')) return <h2 key={i} className="report-h2">{line.substring(3)}</h2>;
       if (line.startsWith('### ')) return <h3 key={i} className="report-h3">{line.substring(4)}</h3>;
-      if (/^[1-9]\./.test(line) || ['🔍','📶','⚖️','⚠️','💡','🛠️'].some(ic => line.startsWith(ic)))
+      if (/^[1-9]\./.test(line) || ['🔍', '📶', '⚖️', '⚠️', '💡', '🛠️'].some(ic => line.startsWith(ic)))
         return <p key={i} className="report-point">{line}</p>;
       if (line.trim() === '---') return <hr key={i} className="report-hr" />;
-      if (line.trim() === '')   return <div key={i} style={{ height: '0.4rem' }} />;
+      if (line.trim() === '') return <div key={i} style={{ height: '0.4rem' }} />;
       return <p key={i} className="report-p">{line}</p>;
     });
   };
 
   // ── Derived stats ───────────────────────────────────────────────────────────
-  const avgLatency  = liveData.length > 0 ? liveData.reduce((a, p) => a + p.latency_ms, 0) / liveData.length : 0;
+  const avgLatency = liveData.length > 0 ? liveData.reduce((a, p) => a + p.latency_ms, 0) / liveData.length : 0;
   const successRate = liveData.length > 0 ? liveData.filter(p => p.status === 200).length / liveData.length * 100 : null;
-  const telVals     = Object.values(telemetry);
-  const avgCpu      = telVals.length > 0 ? telVals.reduce((a, n) => a + (n.cpu_percent || 0), 0) / telVals.length : 0;
-  const avgRam      = telVals.length > 0 ? telVals.reduce((a, n) => a + (n.memory_mb  || 0), 0) / telVals.length : 0;
-  const srColor     = successRate === null ? C.slateL : successRate >= 99 ? C.emerald : successRate >= 95 ? C.amber : C.rose;
+  const telVals = Object.values(telemetry);
+  const avgCpu = telVals.length > 0 ? telVals.reduce((a, n) => a + (n.cpu_percent || 0), 0) / telVals.length : 0;
+  const avgRam = telVals.length > 0 ? telVals.reduce((a, n) => a + (n.memory_mb || 0), 0) / telVals.length : 0;
+  const srColor = successRate === null ? C.slateL : successRate >= 99 ? C.emerald : successRate >= 95 ? C.amber : C.rose;
 
   const strategyDetails = {
     'Hardware-Aware': { id: 'ha', label: 'HA' },
@@ -605,9 +634,9 @@ const App = () => {
     'Hashing': { id: 'hash', label: 'Hash' }
   };
   const activePlots = [
-    { id: 'latency_comparison',   label: 'Latency Comparison'   },
+    { id: 'latency_comparison', label: 'Latency Comparison' },
     { id: 'latency_distribution', label: 'Latency Distribution' },
-    { id: 'success_rate',         label: 'Success Rate'         }
+    { id: 'success_rate', label: 'Success Rate' }
   ];
   compareStrategies.forEach(s => {
     const details = strategyDetails[s];
@@ -647,9 +676,9 @@ const App = () => {
                 onClick={() => setLoadParams({ concurrent: 10, total: 60, tokens: 50 })}>Stress</button>
             </div>
             {[
-              { key: 'concurrent', label: 'Number of Users',  min: 1,  max: 50,  step: 1  },
-              { key: 'total',      label: 'Total Requests',   min: 10, max: 500, step: 10 },
-              { key: 'tokens',     label: 'Max Tokens',       min: 10, max: 512, step: 10 },
+              { key: 'concurrent', label: 'Number of Users', min: 1, max: 50, step: 1 },
+              { key: 'total', label: 'Total Requests', min: 10, max: 500, step: 10 },
+              { key: 'tokens', label: 'Max Tokens', min: 10, max: 512, step: 10 },
             ].map(({ key, label, min, max, step }) => (
               <div key={key} className="slider-group">
                 <div className="slider-label-row">
@@ -667,9 +696,9 @@ const App = () => {
             <p className="section-label">Routing Strategy</p>
             {[
               { id: 'hardware-aware', emoji: '🔥', name: 'Hardware-Aware', desc: 'Routes to least-loaded node via telemetry.' },
-              { id: 'round-robin',    emoji: '🔄', name: 'Round Robin',     desc: 'Cyclic request distribution.' },
+              { id: 'round-robin', emoji: '🔄', name: 'Round Robin', desc: 'Cyclic request distribution.' },
               { id: 'least-connection', emoji: '⚖️', name: 'Least Connection', desc: 'Routes to node with fewest active requests.' },
-              { id: 'hashing',        emoji: '🔑', name: 'Hashing',         desc: 'Deterministic routing by prompt content.' },
+              { id: 'hashing', emoji: '🔑', name: 'Hashing', desc: 'Deterministic routing by prompt content.' },
             ].map(s => (
               <div key={s.id} className={`strategy-card ${strategy === s.id ? 'strategy-active' : ''}`}
                 onClick={() => setStrategy(s.id)}>
@@ -681,23 +710,49 @@ const App = () => {
             ))}
           </section>
 
-          <button className="btn btn-accent" onClick={startBenchmark} disabled={benchmarkStatus.running}>
+          <button className="btn btn-accent" onClick={startBenchmark} disabled={benchmarkStatus.running || autoStatus.running}>
             {benchmarkStatus.running ? '⏳ Running...' : '🚀 Execute Production Test'}
           </button>
+
+          {/* ── Full Research Suite ── */}
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
+            <p className="section-label" style={{ marginBottom: '0.4rem' }}>🔬 Automated Research</p>
+            <button className="btn" onClick={startAutoSuite}
+              disabled={autoStatus.running || benchmarkStatus.running}
+              style={{
+                background: autoStatus.running ? 'rgba(139,92,246,0.15)' : 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(99,102,241,0.2))',
+                border: `1px solid ${autoStatus.running ? C.violet : 'rgba(139,92,246,0.3)'}`,
+                color: autoStatus.running ? C.violet : '#e0e7ff',
+                fontWeight: 700,
+              }}>
+              {autoStatus.running ? `⏳ Running ${autoStatus.completed}/${autoStatus.total}...` : '🔬 Run Full Research Suite'}
+            </button>
+            {autoStatus.running && (
+              <div style={{ fontSize: '0.62rem', color: '#a5b4fc', marginTop: '0.35rem', lineHeight: 1.6 }}>
+                <div>Strategy: <b style={{ color: C.amber }}>{autoStatus.current_strategy}</b></div>
+                <div>Load: <b>{autoStatus.current_load}</b></div>
+                <div style={{ color: '#64748b' }}>{autoStatus.phase}</div>
+              </div>
+            )}
+            <p style={{ fontSize: '0.55rem', color: '#475569', marginTop: '0.35rem', lineHeight: 1.5 }}>
+              Runs all 4 strategies × 2 loads (8 benchmarks), then auto-generates plots.
+            </p>
+          </div>
+
           <button className={`btn ${isGeneratingReport ? 'btn-accent' : 'btn-outline'}`}
             onClick={generateReport} disabled={isGeneratingReport}>
             {isGeneratingReport ? '🛡️ AI Analyzing...' : '📊 Update Intelligence Report'}
           </button>
-          <button className="btn" 
-              style={{
-                borderColor: isGeneratingReport ? C.rose : 'transparent',
-                color: isGeneratingReport ? C.rose : '#64748b',
-                background: isGeneratingReport ? 'transparent' : 'rgba(255,255,255,0.03)',
-                cursor: isGeneratingReport ? 'pointer' : 'not-allowed',
-                marginTop: '0.5rem'
-              }}
-              onClick={stopReport} disabled={!isGeneratingReport}>
-              🛑 Stop Analysis
+          <button className="btn"
+            style={{
+              borderColor: isGeneratingReport ? C.rose : 'transparent',
+              color: isGeneratingReport ? C.rose : '#64748b',
+              background: isGeneratingReport ? 'transparent' : 'rgba(255,255,255,0.03)',
+              cursor: isGeneratingReport ? 'pointer' : 'not-allowed',
+              marginTop: '0.5rem'
+            }}
+            onClick={stopReport} disabled={!isGeneratingReport}>
+            🛑 Stop Analysis
           </button>
         </div>
       </aside>
@@ -734,7 +789,7 @@ const App = () => {
               </div>
               {[
                 { label: 'CPU', value: `${(stats.cpu_percent || 0).toFixed(1)}%`, pct: stats.cpu_percent || 0, color: C.indigo },
-                { label: 'RAM', value: `${(stats.memory_mb  || 0).toFixed(0)} MB`, pct: (stats.memory_mb / 2048) * 100, color: C.emerald },
+                { label: 'RAM', value: `${(stats.memory_mb || 0).toFixed(0)} MB`, pct: (stats.memory_mb / 2048) * 100, color: C.emerald },
                 { label: 'Burden', value: ((stats.cpu_percent || 0) * 0.4 + ((stats.memory_mb || 0) / 2048 * 100) * 0.1 + (stats.active_requests || 0) * 50).toFixed(1), pct: ((stats.cpu_percent || 0) * 0.4 + ((stats.memory_mb || 0) / 2048 * 100) * 0.1 + (stats.active_requests || 0) * 50), color: C.rose },
               ].map(m => (
                 <div key={m.label} className="meter-group">
@@ -750,12 +805,65 @@ const App = () => {
           ))}
         </section>
 
+        {/* ── Auto-Orchestrator Progress Panel ────────────────────────────── */}
+        {(autoStatus.running || autoStatus.finished) && (
+          <section className="glass-card" style={{ borderLeft: `3px solid ${autoStatus.running ? C.violet : C.emerald}` }}>
+            <div className="card-header">
+              <div>
+                <h3 className="card-title">🔬 Research Suite {autoStatus.running ? 'In Progress' : 'Complete'}</h3>
+                <p className="card-sub">
+                  {autoStatus.running
+                    ? `${autoStatus.phase} · ${autoStatus.completed}/${autoStatus.total} benchmarks`
+                    : `✅ All ${autoStatus.total} benchmarks finished · Plots generated`}
+                </p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                {autoStatus.current_strategy && autoStatus.running && (
+                  <div style={{
+                    background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)',
+                    borderRadius: 6, padding: '0.25rem 0.65rem', fontSize: '0.7rem',
+                    color: C.amber, fontWeight: 700
+                  }}>
+                    {autoStatus.current_strategy.toUpperCase()} · {autoStatus.current_load?.toUpperCase()}
+                  </div>
+                )}
+                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: autoStatus.running ? C.violet : C.emerald }}>
+                  {autoStatus.completed}/{autoStatus.total}
+                </span>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 6, height: 8, marginBottom: '1rem', overflow: 'hidden' }}>
+              <div style={{
+                width: `${(autoStatus.completed / Math.max(1, autoStatus.total)) * 100}%`,
+                height: '100%',
+                background: autoStatus.running ? `linear-gradient(90deg, ${C.violet}, ${C.indigo})` : C.emerald,
+                borderRadius: 6,
+                transition: 'width 0.5s ease',
+              }} />
+            </div>
+
+            {/* Log console */}
+            <div ref={autoLogRef} style={{
+              background: '#0d1117', borderRadius: 8, padding: '0.75rem',
+              fontSize: '0.62rem', fontFamily: 'JetBrains Mono, monospace',
+              color: '#8b949e', maxHeight: 200, overflowY: 'auto', lineHeight: 1.7,
+            }}>
+              {autoStatus.log?.map((l, i) => (
+                <div key={i} style={{ color: l.includes('✅') ? '#4ade80' : l.includes('❌') ? '#f87171' : l.includes('🚀') ? '#a5b4fc' : '#8b949e' }}>{l}</div>
+              ))}
+              {autoStatus.log?.length === 0 && <span style={{ color: '#30363d' }}>Waiting for orchestrator events...</span>}
+            </div>
+          </section>
+        )}
+
         {/* ── Analytics Preview ──────────────────────────────────────────── */}
         <section className="glass-card">
           <div className="card-header">
             <div>
               <h3 className="card-title">Performance Analytics Preview</h3>
-              <p className="card-sub">Live trend analysis · updating every 100ms</p>
+              <p className="card-sub">Live trend analysis · updates every 2s (500ms during benchmarks)</p>
             </div>
             <div className="stat-pill" style={{ background: `${srColor}18`, borderColor: `${srColor}40`, color: srColor }}>
               Wave Success: <strong>{successRate === null ? '—' : `${successRate.toFixed(1)}%`}</strong>
@@ -769,12 +877,12 @@ const App = () => {
 
           {/* 6 individual sparklines */}
           <div className="chart-grid">
-            <LineChart data={telemetryHistory} dataKey="lat" color={C.indigo}  label="Mean Latency"  unit="ms" isBadIfIncreasing />
-            <LineChart data={telemetryHistory} dataKey="p95" color={C.amber}   label="P95 Latency"   unit="ms" isBadIfIncreasing />
-            <LineChart data={telemetryHistory} dataKey="p99" color={C.rose}    label="P99 Latency"   unit="ms" isBadIfIncreasing />
-            <LineChart data={telemetryHistory} dataKey="thr" color={C.emerald} label="Throughput"    unit=" req/s" />
-            <LineChart data={telemetryHistory} dataKey="cpu" color={C.violet}  label="Global CPU"    unit="%" isBadIfIncreasing />
-            <LineChart data={telemetryHistory} dataKey="ram" color={C.sky}     label="Global RAM"    unit=" MB" />
+            <LineChart data={telemetryHistory} dataKey="lat" color={C.indigo} label="Mean Latency" unit="ms" isBadIfIncreasing />
+            <LineChart data={telemetryHistory} dataKey="p95" color={C.amber} label="P95 Latency" unit="ms" isBadIfIncreasing />
+            <LineChart data={telemetryHistory} dataKey="p99" color={C.rose} label="P99 Latency" unit="ms" isBadIfIncreasing />
+            <LineChart data={telemetryHistory} dataKey="thr" color={C.emerald} label="Throughput" unit=" req/s" />
+            <LineChart data={telemetryHistory} dataKey="cpu" color={C.violet} label="Global CPU" unit="%" isBadIfIncreasing />
+            <LineChart data={telemetryHistory} dataKey="ram" color={C.sky} label="Global RAM" unit=" MB" />
             <SuccessRateChart data={telemetryHistory} />
             <BurdenCompareChart telemetry={telemetry} />
           </div>
@@ -782,9 +890,9 @@ const App = () => {
           {/* KPI row */}
           <div className="kpi-grid">
             {[
-              { label: 'Avg CPU',       val: `${avgCpu.toFixed(1)}%`,     color: C.indigo  },
-              { label: 'Avg RAM',       val: `${avgRam.toFixed(0)} MB`,   color: C.sky     },
-              { label: 'Success Rate',  val: successRate === null ? '—' : `${successRate.toFixed(1)}%`, color: srColor },
+              { label: 'Avg CPU', val: `${avgCpu.toFixed(1)}%`, color: C.indigo },
+              { label: 'Avg RAM', val: `${avgRam.toFixed(0)} MB`, color: C.sky },
+              { label: 'Success Rate', val: successRate === null ? '—' : `${successRate.toFixed(1)}%`, color: srColor },
               { label: 'Mean Response', val: liveData.length === 0 ? '—' : `${avgLatency.toFixed(0)}ms`, color: C.amber },
             ].map(s => (
               <div key={s.label} className="kpi-card">
@@ -814,7 +922,7 @@ const App = () => {
               <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.85rem', color: '#cbd5e1' }}>
                 {['Hardware-Aware', 'Round-Robin', 'Least-Connection', 'Hashing'].map(s => (
                   <label key={s} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={compareStrategies.includes(s)} 
+                    <input type="checkbox" checked={compareStrategies.includes(s)}
                       onChange={() => toggleCompare(s)} style={{ cursor: 'pointer' }} />
                     {s}
                   </label>

@@ -152,6 +152,24 @@ async def health():
         "polling_interval": POLLING_INTERVAL
     }
 
+@app.post("/strategy")
+async def set_strategy(request: Request):
+    """Hot-swap the routing strategy at runtime without restarting the container."""
+    global ROUTING_STRATEGY
+    body = await request.json()
+    new_strategy = body.get("strategy", "hardware-aware")
+    valid = ["hardware-aware", "round-robin", "least-connection", "hashing"]
+    if new_strategy not in valid:
+        raise HTTPException(status_code=400, detail=f"Invalid strategy. Must be one of: {valid}")
+    old = ROUTING_STRATEGY
+    ROUTING_STRATEGY = new_strategy
+    logger.info(f"Strategy hot-swapped: {old} → {new_strategy}")
+    return {"status": "ok", "old_strategy": old, "new_strategy": ROUTING_STRATEGY}
+
+@app.get("/strategy")
+async def get_strategy():
+    return {"strategy": ROUTING_STRATEGY}
+
 @app.get("/telemetry")
 async def get_all_telemetry():
     return {
