@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
 # Install python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir scikit-build-core ninja && \
-    CMAKE_ARGS="-DGGML_OPENBLAS=off" FORCE_CMAKE=1 \
+    CMAKE_ARGS="-DGGML_OPENBLAS=off -DGGML_NATIVE=OFF" FORCE_CMAKE=1 \
     pip install --no-cache-dir \
     fastapi \
     uvicorn \

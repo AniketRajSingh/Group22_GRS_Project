@@ -209,7 +209,20 @@ def main():
     banner("🔧  PREPARING ENVIRONMENT")
     info("Clearing ports 5173, 8001, 8080...")
     for port in [5173, 8001, 8080]:
-        subprocess.run(f"fuser -k {port}/tcp", shell=True, stderr=subprocess.DEVNULL)
+        if sys.platform == "win32":
+            # Windows: find PID on port via netstat, then taskkill
+            subprocess.run(
+                f'for /f "tokens=5" %a in (\'netstat -aon ^| findstr :{port} ^| findstr LISTENING\') do taskkill /F /PID %a',
+                shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        elif sys.platform == "linux":
+            # Linux: fuser can kill processes on a TCP port directly
+            subprocess.run(f"fuser -k {port}/tcp", shell=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            # macOS / other Unix: use lsof to find and kill PIDs
+            subprocess.run(f"lsof -ti:{port} | xargs kill -9 2>/dev/null || true", shell=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     setup_environment()
 
