@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+
 :root {
   --primary: #4f46e5;      /* Indigo */
   --primary-light: #eef2ff;
@@ -10,8 +12,6 @@
   --text-muted: #64748b;
   --success: #10b981;
 }
-
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
 
 body {
   margin: 0;

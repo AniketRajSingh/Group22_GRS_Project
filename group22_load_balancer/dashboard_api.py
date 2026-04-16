@@ -192,6 +192,98 @@ async def get_plot(filename: str):
         return FileResponse(path)
     raise HTTPException(status_code=404, detail="Plot not found")
 
+@app.get("/api/benchmark-results")
+def get_benchmark_results():
+    results_dir = os.path.join(os.path.dirname(__file__), "..", "group22_results")
+    if not os.path.exists(results_dir):
+        return []
+    
+    # Strategy name normalization map
+    STRATEGY_MAP = {
+        'ha': 'HA', 'hardware-aware': 'HA', 'hardware_aware': 'HA',
+        'rr': 'RR', 'round-robin': 'RR', 'round_robin': 'RR',
+        'lc': 'LC', 'least-connection': 'LC', 'least_connection': 'LC',
+        'hash': 'HS', 'hashing': 'HS', 'hs': 'HS',
+    }
+        
+    summaries = []
+    for f in sorted(os.listdir(results_dir)):
+        if not f.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(results_dir, f), 'r') as file:
+                data = json.load(file)
+                if not data: continue
+                
+                status_200 = [r for r in data if r.get('status') == 200]
+                latencies = [r.get('latency_ms', 0) for r in status_200]
+                
+                # Parse strategy and load from filename
+                base = f.replace(".json", "")
+                strategy = "unknown"
+                load = "unknown"
+                
+                if base.startswith("group22_results_"):
+                    # group22_results_ha_normal.json
+                    rest = base.replace("group22_results_", "")
+                    parts = rest.rsplit("_", 1)
+                    if len(parts) == 2:
+                        strategy, load = parts
+                elif base.startswith("dynamic_results_"):
+                    # dynamic_results_hardware-aware_normal_1776354886.json
+                    rest = base.replace("dynamic_results_", "")
+                    # Remove trailing timestamp (last segment if numeric)
+                    segments = rest.rsplit("_", 1)
+                    if len(segments) == 2 and segments[1].isdigit():
+                        rest = segments[0]
+                    parts = rest.rsplit("_", 1)
+                    if len(parts) == 2:
+                        strategy, load = parts
+                
+                # Normalize strategy name
+                strategy_norm = STRATEGY_MAP.get(strategy.lower(), strategy.upper())
+                
+                summaries.append({
+                    "filename": f,
+                    "strategy": strategy_norm,
+                    "load": load.capitalize(),
+                    "avg_latency": sum(latencies) / len(latencies) if latencies else 0,
+                    "p95_latency": sorted(latencies)[int(len(latencies)*0.95)] if latencies else 0,
+                    "success_rate": (len(status_200) / len(data)) * 100 if data else 0,
+                    "throughput": len(status_200) / (sum(latencies)/1000) if latencies and sum(latencies) > 0 else 0,
+                    "timestamp": os.path.getmtime(os.path.join(results_dir, f))
+                })
+        except Exception as e:
+            print(f"Error reading {f}: {e}")
+    
+    # Deduplicate: keep only latest file per strategy+load combo
+    best = {}
+    for s in summaries:
+        key = f"{s['strategy']}_{s['load']}"
+        if key not in best or s['timestamp'] > best[key]['timestamp']:
+            best[key] = s
+    
+    # Sort by strategy then load for consistent ordering
+    SORT_ORDER = {'HA': 0, 'RR': 1, 'LC': 2, 'HS': 3}
+    result = sorted(best.values(), key=lambda x: (SORT_ORDER.get(x['strategy'], 9), x['load']))
+    # Remove timestamp from response
+    for r in result:
+        r.pop('timestamp', None)
+    return result
+
+@app.get("/api/benchmark-detailed-results")
+def get_benchmark_detailed_results(file: str):
+    results_dir = os.path.join(os.path.dirname(__file__), "..", "group22_results")
+    path = os.path.join(results_dir, file)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Result file not found")
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/plots-list")
 async def list_plots():
     """Returns available plot files with their last-modified timestamps for live polling."""
@@ -203,59 +295,309 @@ async def list_plots():
             plots.append({"name": f, "mtime": os.path.getmtime(path)})
     return {"plots": plots, "latest_mtime": max((p["mtime"] for p in plots), default=0)}
 
-# ── Report Generation ──
-_report_status = {"running": False, "progress": 0, "current_graph": "", "completed": [], "report": "", "total_steps": 9}
+# ── Report Generation V2 (Parallel LLM) ──────────────────────────────────────
+_report_status: Dict[str, Any] = {
+    "running": False, "progress": 0, "current_graph": "",
+    "completed": [], "report": None, "total_steps": 1,
+    "cancel": False,
+}
 
 
+def _collect_benchmark_data():
+    """Read all benchmark results and pair with plot images."""
+    results_dir = os.path.join(BASE_DIR, "group22_results")
+    plot_dir = os.path.join(BASE_DIR, "group22_plots/dynamic")
+    plots_with_data = []
+
+    if not os.path.exists(results_dir):
+        return []
+
+    STRATEGY_MAP = {
+        "hardware-aware": "HA", "round-robin": "RR",
+        "least-connection": "LC", "hashing": "HS",
+    }
+
+    for filename in sorted(os.listdir(results_dir)):
+        if not filename.endswith(".json"):
+            continue
+        filepath = os.path.join(results_dir, filename)
+        try:
+            with open(filepath, "r") as f:
+                data = json.load(f)
+
+            if not isinstance(data, list) or len(data) == 0:
+                continue
+
+            # Extract strategy and load from filename
+            # Format: results_hardware-aware_normal_....json
+            parts = filename.replace("results_", "").split("_")
+            raw_strategy = parts[0] if len(parts) > 0 else "unknown"
+            # Handle multi-word strategies like "hardware-aware"
+            load_name = "unknown"
+            for lp in ["normal", "stress"]:
+                if lp in filename:
+                    load_name = lp
+                    break
+            # Re-extract strategy: everything between 'results_' and '_normal' or '_stress'
+            prefix = filename.replace("results_", "").replace(".json", "")
+            strategy_raw = prefix.split(f"_{load_name}")[0] if load_name != "unknown" else raw_strategy
+
+            strategy_short = STRATEGY_MAP.get(strategy_raw, strategy_raw.upper()[:2])
+
+            # Compute metrics from raw data
+            latencies = [r.get("latency_ms", 0) for r in data if isinstance(r, dict)]
+            statuses = [r.get("status", 0) for r in data if isinstance(r, dict)]
+            successes = sum(1 for s in statuses if s == 200)
+            avg_lat = sum(latencies) / len(latencies) if latencies else 0
+            sorted_lat = sorted(latencies)
+            p95_idx = int(len(sorted_lat) * 0.95)
+            p95_lat = sorted_lat[min(p95_idx, len(sorted_lat) - 1)] if sorted_lat else 0
+            success_rate = (successes / len(statuses) * 100) if statuses else 0
+
+            # Find matching plot image (best effort)
+            image_path = None
+            for plot_file in os.listdir(plot_dir) if os.path.exists(plot_dir) else []:
+                if plot_file.endswith(".png"):
+                    image_path = os.path.join(plot_dir, plot_file)
+                    break  # Use any available plot for now
+
+            plots_with_data.append({
+                "strategy": strategy_short,
+                "load": load_name.capitalize(),
+                "image_path": image_path,
+                "filename": filename,
+                "metrics": {
+                    "avg_latency": avg_lat,
+                    "p95_latency": p95_lat,
+                    "success_rate": success_rate,
+                    "total_requests": len(data),
+                    "concurrent": "N/A",
+                },
+            })
+        except Exception as e:
+            print(f"  [Report] Skipping {filename}: {e}")
+            continue
+
+    return plots_with_data
+
+
+def _format_report(result):
+    """Format the parallel analysis result into a structured markdown report."""
+    sections = result.get("sections", [])
+    synthesis = result.get("synthesis", {})
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    strategies_tested = list(set(s["strategy"] for s in sections))
+
+    lines = [
+        "# 🗂️ Unified Cluster Intelligence Report (UCIR)",
+        f"\n> Generated: {timestamp}  ",
+        f"> Strategies analyzed: {', '.join(strategies_tested)}  ",
+        f"> Total benchmarks: {len(sections)}",
+        "",
+        "---",
+    ]
+
+    # ── Per-benchmark sections ──
+    for i, section in enumerate(sections):
+        s = section["strategy"]
+        l = section["load"]
+        m = section["metrics"]
+        a = section.get("analysis", {})
+
+        lines.append(f"\n## 📊 {i+1}. {s} — {l} Load")
+        lines.append("")
+        lines.append(f"| Metric | Value |")
+        lines.append(f"|--------|-------|")
+        lines.append(f"| Mean Latency | {m.get('avg_latency', 0):.1f} ms |")
+        lines.append(f"| P95 Latency | {m.get('p95_latency', 0):.1f} ms |")
+        lines.append(f"| Success Rate | {m.get('success_rate', 0):.1f}% |")
+        lines.append(f"| Total Requests | {m.get('total_requests', 'N/A')} |")
+        lines.append("")
+
+        if isinstance(a, dict) and "error" not in a:
+            rating = a.get("performance_rating", "N/A")
+            rating_emoji = {"EXCELLENT": "🟢", "GOOD": "🟡", "MODERATE": "🟠", "POOR": "🔴", "CRITICAL": "⛔"}.get(rating, "⚪")
+            lines.append(f"**Performance Rating**: {rating_emoji} {rating}")
+            lines.append("")
+            lines.append(f"🔍 **Metric Identity**: {a.get('metric_identity', 'N/A')}")
+            lines.append("")
+            lines.append(f"📶 **Behavioral Trend**: {a.get('behavioral_trend', 'N/A')}")
+            lines.append("")
+            lines.append(f"⚠️ **Anomalies**: {a.get('anomalies', 'None detected')}")
+            lines.append("")
+            lines.append(f"🔧 **Bottleneck Analysis**: {a.get('bottleneck_analysis', 'N/A')}")
+            lines.append("")
+            lines.append(f"💡 **Recommendation**: {a.get('recommendation', 'N/A')}")
+        elif isinstance(a, dict) and "error" in a:
+            lines.append(f"⚠️ Analysis error: {a['error']}")
+            if "raw" in a:
+                lines.append(f"\n> Raw LLM output: {a['raw'][:300]}")
+        else:
+            lines.append(f"Analysis: {a}")
+
+        lines.append("")
+        lines.append("---")
+
+    # ── Cross-strategy comparison table ──
+    lines.append("\n## 📈 Cross-Strategy Comparison")
+    lines.append("")
+    lines.append("| Strategy | Load | Mean (ms) | P95 (ms) | Success | Rating |")
+    lines.append("|----------|------|-----------|----------|---------|--------|")
+    for section in sections:
+        m = section["metrics"]
+        a = section.get("analysis", {})
+        rating = a.get("performance_rating", "—") if isinstance(a, dict) else "—"
+        lines.append(
+            f"| {section['strategy']} | {section['load']} | "
+            f"{m.get('avg_latency', 0):.1f} | {m.get('p95_latency', 0):.1f} | "
+            f"{m.get('success_rate', 0):.1f}% | {rating} |"
+        )
+    lines.append("")
+
+    # ── Executive Synthesis ──
+    lines.append("\n## 🏁 Executive Synthesis")
+    lines.append("")
+    if isinstance(synthesis, dict) and "error" not in synthesis:
+        lines.append(f"**Overall Health**: {synthesis.get('overall_health', 'N/A')}")
+        lines.append("")
+        lines.append(f"**Best Strategy (Normal)**: {synthesis.get('best_strategy_normal', 'N/A')}")
+        lines.append("")
+        lines.append(f"**Best Strategy (Stress)**: {synthesis.get('best_strategy_stress', 'N/A')}")
+        lines.append("")
+        findings = synthesis.get("critical_findings", [])
+        if findings:
+            lines.append("### 🔑 Critical Findings")
+            for f in findings:
+                lines.append(f"- {f}")
+            lines.append("")
+        recs = synthesis.get("recommendations", [])
+        if recs:
+            lines.append("### 🛠️ Recommendations")
+            for r in recs:
+                lines.append(f"- {r}")
+            lines.append("")
+        lines.append(f"**Conclusion**: {synthesis.get('conclusion', 'N/A')}")
+    elif isinstance(synthesis, dict) and "error" in synthesis:
+        lines.append(f"⚠️ Synthesis error: {synthesis['error']}")
+    else:
+        lines.append(str(synthesis))
+
+    return "\n".join(lines)
+
+
+def _run_report_gen_v2():
+    """V2 report generator: parallel LLM analysis with structured output."""
+    global _report_status
+    try:
+        import sys
+        if BASE_DIR not in sys.path:
+            sys.path.append(BASE_DIR)
+
+        # ① Generate latest plots first
+        _report_status["current_graph"] = "Generating latest plots..."
+        _report_status["progress"] = 5
+        try:
+            plot_cmd = [
+                "python3", os.path.join(BASE_DIR, "group22_benchmarks/group22_plot_results.py"),
+                "--type", "dynamic",
+                "--strategies", "Hardware-Aware", "Round-Robin", "Least-Connection", "Hashing",
+            ]
+            subprocess.run(plot_cmd, check=True, timeout=60)
+        except Exception as e:
+            print(f"  [Report] Plot generation warning: {e}")
+
+        # ② Collect benchmark data
+        _report_status["current_graph"] = "Reading benchmark results..."
+        _report_status["progress"] = 10
+        plots_with_data = _collect_benchmark_data()
+
+        if not plots_with_data:
+            _report_status["report"] = _format_report({"sections": [], "synthesis": {"error": "No benchmark data found. Run a benchmark first."}})
+            return
+
+        total = len(plots_with_data)
+        _report_status["total_steps"] = total + 2  # plots + synthesis + formatting
+
+        # ③ Run parallel analysis
+        def progress_cb(phase, detail):
+            if _report_status.get("cancel"):
+                return
+            _report_status["current_graph"] = detail
+            if phase == "plot_done":
+                parts = detail.split("—")
+                name = parts[0].strip() if parts else detail
+                if name not in _report_status["completed"]:
+                    _report_status["completed"].append(name)
+                done = len(_report_status["completed"])
+                _report_status["progress"] = int(10 + (done / total) * 75)
+            elif phase == "synthesis":
+                _report_status["progress"] = 90
+            elif phase == "complete":
+                _report_status["progress"] = 100
+
+        from describe_graph import analyze_plots_parallel
+        result = analyze_plots_parallel(plots_with_data, progress_callback=progress_cb)
+
+        # ④ Format into markdown
+        _report_status["current_graph"] = "Formatting report..."
+        _report_status["progress"] = 95
+        report_md = _format_report(result)
+        _report_status["report"] = report_md
+        _report_status["progress"] = 100
+        _report_status["current_graph"] = "✅ Complete"
+
+    except Exception as e:
+        _report_status["report"] = f"# ❌ Report Generation Error\n\n{e}"
+        import traceback
+        traceback.print_exc()
+    finally:
+        _report_status["running"] = False
+
+
+# Legacy V1 report (kept for backward compat)
 def _run_report_gen():
     global _report_status
     try:
         import sys
         if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
-        
-        # Dynamically calculate total steps for the progress bar
-        # 1 (Init) + (2 yields per plot) + 2 (Synthesis generation and completion)
         plot_dir = os.path.join(BASE_DIR, "group22_plots/dynamic")
         num_plots = len([f for f in os.listdir(plot_dir) if f.endswith('.png')]) if os.path.exists(plot_dir) else 0
         total_steps = 3 + (2 * num_plots) if num_plots > 0 else 1
-        _report_status["total_steps"] = total_steps # type: ignore
-
+        _report_status["total_steps"] = total_steps
         from describe_graph import analyze_all_plots
         for i, (graph_name, text) in enumerate(analyze_all_plots()):
-            if _report_status.get("cancel"): # type: ignore
-                _report_status["report"] += "\n\n## ⚠️ [ANALYSIS CANCELLED BY USER]" # type: ignore
-                break
-                
-            _report_status["current_graph"] = graph_name # type: ignore
-            
-            # Only mark as completed once the text segment is actually generated
+            if _report_status.get("cancel"): break
+            _report_status["current_graph"] = graph_name
             if text.strip():
-                if graph_name not in _report_status["completed"]: # type: ignore
-                    _report_status["completed"].append(graph_name) # type: ignore
-                _report_status["report"] += f"\n\n{text}" # type: ignore
-                
-            progress = int(((i + 1) / total_steps) * 100)
-            _report_status["progress"] = min(progress, 100) # type: ignore
-
+                if graph_name not in _report_status["completed"]:
+                    _report_status["completed"].append(graph_name)
+                _report_status["report"] += f"\n\n{text}"
+            _report_status["progress"] = min(int(((i + 1) / total_steps) * 100), 100)
     except Exception as e:
-        _report_status["report"] += f"\n\n[REPORT ERROR] {e}" # type: ignore
+        _report_status["report"] += f"\n\n[REPORT ERROR] {e}"
     finally:
         _report_status["running"] = False
 
+
 @app.post("/api/generate-report")
 async def generate_report():
+    """V2 report generation with parallel LLM analysis."""
     global _report_status
     if _report_status["running"]: return {"status": "busy"}
-    _report_status = {"running": True, "cancel": False, "progress": 0, "current_graph": "Initializing...", "completed": [], "report": ""}
-    threading.Thread(target=_run_report_gen, daemon=True).start()
+    _report_status = {
+        "running": True, "cancel": False, "progress": 0,
+        "current_graph": "Initializing...", "completed": [],
+        "report": None, "total_steps": 1,
+    }
+    threading.Thread(target=_run_report_gen_v2, daemon=True).start()
     return {"status": "started"}
 
 @app.post("/api/cancel-report")
 async def cancel_report():
     global _report_status
     if _report_status["running"]:
-        _report_status["cancel"] = True # type: ignore
-        _report_status["current_graph"] = "Cancelling (waiting for current graph)..." # type: ignore
+        _report_status["cancel"] = True
+        _report_status["current_graph"] = "Cancelling..."
     return {"status": "cancelling"}
 
 @app.get("/api/report-status")
@@ -371,6 +713,7 @@ _auto_status: Dict[str, Any] = {
     "log": [],
     "results_summary": [],
     "finished": False,
+    "test_generation": 0,
 }
 
 def _auto_log(msg: str):
@@ -391,6 +734,7 @@ def _run_auto_orchestrator(selected_strategies=None, selected_loads=None):
                 run_label = f"{strat} · {profile['name']}"
                 _auto_status["current_strategy"] = strat
                 _auto_status["current_load"] = profile["name"]
+                _auto_status["test_generation"] = _auto_status.get("test_generation", 0) + 1
                 _auto_status["phase"] = f"Switching → {strat}"
                 _auto_log(f"🔄 Hot-swapping strategy to: {strat}")
 
@@ -488,6 +832,17 @@ async def start_auto_benchmark(req: AutoBenchmarkRequest):
     global _auto_status
     if _auto_status["running"]:
         raise HTTPException(status_code=400, detail="Auto-benchmark already running")
+    
+    # Clear old results for a clean slate
+    results_dir = os.path.join(os.path.dirname(__file__), "..", "group22_results")
+    if os.path.exists(results_dir):
+        for f in os.listdir(results_dir):
+            if f.endswith(".json"):
+                try:
+                    os.remove(os.path.join(results_dir, f))
+                except Exception:
+                    pass
+    
     selected_strategies = req.strategies if req.strategies else STRATEGIES
     selected_loads = req.loads if req.loads else LOAD_PROFILES
     total = len(selected_strategies) * len(selected_loads)
@@ -504,6 +859,15 @@ async def start_auto_benchmark(req: AutoBenchmarkRequest):
     }
     threading.Thread(target=_run_auto_orchestrator, args=(selected_strategies, selected_loads), daemon=True).start()
     return {"status": "started", "total_benchmarks": total}
+
+@app.post("/api/benchmark-stop")
+async def stop_benchmark():
+    global _auto_status, _benchmark_status
+    _auto_status["running"] = False
+    _auto_status["phase"] = "Stopped by user"
+    _auto_status["finished"] = True
+    _benchmark_status["running"] = False
+    return {"status": "stopped"}
 
 @app.get("/api/auto-benchmark-status")
 async def get_auto_benchmark_status():

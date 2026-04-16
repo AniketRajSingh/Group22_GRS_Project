@@ -1,4 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
+import { Line, Bar, Doughnut } from 'react-chartjs-2';
+
+ChartJS.register(
+  CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, ArcElement, Title, Tooltip, Legend, Filler
+);
+
 import './App.css';
 
 // ─── Colour tokens ─────────────────────────────────────────────────────────────
@@ -220,6 +240,146 @@ const BurdenCompareChart = ({ telemetry }) => {
   );
 };
 
+// ─── Chart.js Research Components ──────────────────────────────────────────
+const STRATEGY_NORMALIZE = {
+  'ha': 'HA', 'hardware-aware': 'HA', 'hardware_aware': 'HA',
+  'rr': 'RR', 'round-robin': 'RR', 'round_robin': 'RR',
+  'lc': 'LC', 'least-connection': 'LC', 'least_connection': 'LC',
+  'hash': 'HS', 'hashing': 'HS', 'hs': 'HS',
+};
+const normalizeStrategy = (s) => STRATEGY_NORMALIZE[s?.toLowerCase()] || s?.toUpperCase() || '?';
+const normalizeLoad = (l) => {
+  const low = l?.toLowerCase();
+  return low === 'normal' ? 'Normal' : low === 'stress' ? 'Stress' : l;
+};
+
+const ResearchBenchmarkChart = ({ results, theme }) => {
+  const textColor = theme === 'dark' ? '#9ca3af' : '#475569';
+  const gridColor = theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+
+  // Group results by normalized strategy, deduplicate, pick latest per strategy+load
+  const STRATEGIES = ['HA', 'RR', 'LC', 'HS'];
+  const lookup = {};
+  results.forEach(r => {
+    const key = `${normalizeStrategy(r.strategy)}_${normalizeLoad(r.load)}`;
+    lookup[key] = r; // last one wins (dedup)
+  });
+
+  const getData = (strat, load, field) => lookup[`${strat}_${load}`]?.[field] ?? null;
+
+  const hasData = results.length > 0;
+
+  const data = {
+    labels: STRATEGIES,
+    datasets: [
+      {
+        label: 'Mean Latency — Normal',
+        data: STRATEGIES.map(s => getData(s, 'Normal', 'avg_latency')),
+        borderColor: C.indigo, backgroundColor: C.indigo + '15',
+        pointBackgroundColor: C.indigo, pointBorderColor: '#fff', pointRadius: 6, pointHoverRadius: 9,
+        tension: 0.3, fill: true, borderWidth: 2.5, borderDash: [],
+      },
+      {
+        label: 'Mean Latency — Stress',
+        data: STRATEGIES.map(s => getData(s, 'Stress', 'avg_latency')),
+        borderColor: C.rose, backgroundColor: C.rose + '15',
+        pointBackgroundColor: C.rose, pointBorderColor: '#fff', pointRadius: 6, pointHoverRadius: 9,
+        tension: 0.3, fill: true, borderWidth: 2.5, borderDash: [],
+      },
+      {
+        label: 'P95 Latency — Normal',
+        data: STRATEGIES.map(s => getData(s, 'Normal', 'p95_latency')),
+        borderColor: C.emerald, backgroundColor: 'transparent',
+        pointBackgroundColor: C.emerald, pointBorderColor: '#fff', pointRadius: 5, pointHoverRadius: 8,
+        tension: 0.3, fill: false, borderWidth: 2, borderDash: [6, 3],
+      },
+      {
+        label: 'P95 Latency — Stress',
+        data: STRATEGIES.map(s => getData(s, 'Stress', 'p95_latency')),
+        borderColor: C.amber, backgroundColor: 'transparent',
+        pointBackgroundColor: C.amber, pointBorderColor: '#fff', pointRadius: 5, pointHoverRadius: 8,
+        tension: 0.3, fill: false, borderWidth: 2, borderDash: [6, 3],
+      },
+    ]
+  };
+
+  const options = {
+    responsive: true, maintainAspectRatio: false,
+    spanGaps: true,
+    plugins: {
+      legend: { position: 'top', labels: { color: textColor, font: { size: 11, weight: 'bold' }, usePointStyle: true, pointStyle: 'circle', padding: 16 } },
+      tooltip: { backgroundColor: 'rgba(0,0,0,0.88)', padding: 14, cornerRadius: 10, titleFont: { weight: 'bold', size: 13 }, bodyFont: { size: 12 } }
+    },
+    scales: {
+      y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } }, title: { display: true, text: 'Latency (ms)', color: textColor, font: { size: 11, weight: 'bold' } }, beginAtZero: true },
+      x: { grid: { color: gridColor + '50' }, ticks: { color: textColor, font: { size: 12, weight: '800' } } }
+    },
+    interaction: { mode: 'index', intersect: false },
+  };
+
+  return (
+    <div className="glass-card" style={{ marginTop: '2rem' }}>
+      <div className="card-header">
+        <div>
+          <h3 className="card-title">🔬 Strategy Performance Comparison</h3>
+          <p className="card-sub">{hasData ? `${results.length} benchmarks · 4 strategies × Normal/Stress` : 'Run research suite to populate'}</p>
+        </div>
+      </div>
+      <div style={{ height: 380 }}><Line data={data} options={options} /></div>
+    </div>
+  );
+};
+
+const LatencyHistogram = ({ data, theme }) => {
+  const textColor = theme === 'dark' ? '#9ca3af' : '#475569';
+  const gridColor = theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+  const NUM_BINS = 15;
+
+  // Compute dynamic bin size based on actual data range
+  let maxLatency = 200; // default when no data
+  if (data && data.length > 0) {
+    maxLatency = Math.max(...data.map(d => d.latency_ms || 0), 200);
+  }
+  const binSize = Math.ceil(maxLatency / NUM_BINS / 10) * 10; // round to nearest 10
+  const bins = new Array(NUM_BINS).fill(0);
+  const labels = new Array(NUM_BINS).fill(0).map((_, i) => {
+    const val = i * binSize;
+    return val >= 1000 ? `${(val / 1000).toFixed(1)}s` : `${val}ms`;
+  });
+
+  if (data && data.length > 0) {
+    data.forEach(d => {
+      const binIdx = Math.min(Math.floor((d.latency_ms || 0) / binSize), NUM_BINS - 1);
+      bins[binIdx]++;
+    });
+  }
+
+  return <Line data={{ labels, datasets: [{
+    label: 'Requests', data: bins,
+    borderColor: C.emerald, backgroundColor: C.emerald + '20',
+    pointBackgroundColor: C.emerald, pointBorderColor: '#fff', pointRadius: 2, pointHoverRadius: 5,
+    tension: 0.35, fill: true, borderWidth: 2,
+  }] }} options={{
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 9 } }, beginAtZero: true,
+        title: { display: true, text: '# Requests', color: textColor, font: { size: 8 } } },
+      x: { grid: { display: false }, ticks: { color: textColor, font: { size: 7 }, maxRotation: 45 },
+        title: { display: true, text: 'Response Time', color: textColor, font: { size: 8 } } }
+    }
+  }} />;
+};
+
+const SuccessRateDoughnut = ({ data }) => {
+  const ok = data ? data.filter(d => d.status === 200).length : 0;
+  const err = data ? data.length - ok : 0;
+  return <Doughnut data={{ labels: ['Success', 'Errors'], datasets: [{ data: data && data.length > 0 ? [ok, err] : [1, 0], backgroundColor: [data && data.length > 0 ? C.emerald : 'rgba(0,0,0,0.05)', C.rose], borderWidth: 0 }] }} options={{
+    responsive: true, maintainAspectRatio: false, cutout: '70%',
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }
+  }} />;
+};
+
 // ─── Node Configurator Panel ────────────────────────────────────────────────────
 const NodeConfigurator = () => {
   const [sysInfo, setSysInfo] = useState(null);
@@ -432,7 +592,21 @@ const App = () => {
   const [startTime, setStartTime] = useState(Date.now());
   const [telemetryHistory, setTelemetryHistory] = useState([]);
   const [liveData, setLiveData] = useState([]);
-  const [autoStatus, setAutoStatus] = useState({ running: false, phase: '', completed: 0, total: 8, log: [], finished: false, current_strategy: '', current_load: '' });
+  const [autoStatus, setAutoStatus] = useState({ running: false, phase: '', completed: 0, total: 8, log: [], finished: false, current_strategy: '', current_load: '', test_generation: 0 });
+  const lastTestGen = useRef(0);
+  const [detailedResults, setDetailedResults] = useState({});
+  const [suiteResults, setSuiteResults] = useState([]);
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
+  const [selectedStrategies, setSelectedStrategies] = useState(['hardware-aware', 'round-robin', 'least-connection', 'hashing']);
+  const [selectedLoads, setSelectedLoads] = useState([
+    { id: 'normal', name: 'Normal', concurrent: 2, total: 20, tokens: 20, enabled: true },
+    { id: 'stress', name: 'Stress', concurrent: 10, total: 60, tokens: 50, enabled: true },
+  ]);
+  const [toast, setToast] = useState(null);
+  const showToast = (message, type = 'info') => {
+    setToast({ message, type, id: Date.now() });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const consoleRef = useRef(null);
   const autoLogRef = useRef(null);
@@ -441,6 +615,33 @@ const App = () => {
 
   useEffect(() => { loadParamsRef.current = loadParams; }, [loadParams]);
   useEffect(() => { liveDataRef.current = liveData; }, [liveData]);
+
+  // Theme persistence
+  useEffect(() => {
+    localStorage.setItem('theme', theme);
+    document.body.className = `${theme}-theme`;
+  }, [theme]);
+  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+
+  // Fetch detailed benchmark results for Chart.js research components
+  const fetchDetailedResults = async (filename) => {
+    try {
+      const resp = await fetch(`/api/benchmark-detailed-results?file=${filename}`);
+      const data = await resp.json();
+      setDetailedResults(prev => ({ ...prev, [filename]: data }));
+    } catch (e) { console.error(e); }
+  };
+  useEffect(() => {
+    suiteResults.forEach(r => {
+      if (!detailedResults[r.filename]) fetchDetailedResults(r.filename);
+    });
+  }, [suiteResults]);
+
+  // Fetch suite results on mount (so charts aren't empty if previous results exist)
+  useEffect(() => {
+    fetch('/api/benchmark-results').then(r => r.json()).then(setSuiteResults).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (consoleRef.current) consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
   }, [benchmarkStatus.logs]);
@@ -453,25 +654,49 @@ const App = () => {
     if (!autoStatus.running) return;
     const id = setInterval(() => {
       fetch('/api/auto-benchmark-status').then(r => r.json()).then(data => {
+        // Per-test reset: when test_generation increments, reset live sparklines
+        if (data.test_generation && data.test_generation !== lastTestGen.current) {
+          lastTestGen.current = data.test_generation;
+          setTelemetryHistory([]);
+          setLiveData([]);
+        }
         setAutoStatus(data);
         if (!data.running) {
           clearInterval(id);
-          // Auto-refresh plots when done
           if (data.finished) setPlotTimestamp(Date.now());
         }
       }).catch(() => { });
+      // Also poll suite results for Chart.js research charts
+      fetch('/api/benchmark-results').then(r => r.json()).then(setSuiteResults).catch(() => {});
     }, 1500);
     return () => clearInterval(id);
   }, [autoStatus.running]);
 
   const startAutoSuite = async () => {
     try {
-      const res = await fetch('/api/auto-benchmark', { method: 'POST' });
+      // Reset all results and live metrics for a clean slate
+      setSuiteResults([]);
+      setDetailedResults({});
+      setTelemetryHistory([]);
+      setLiveData([]);
+      setBenchmarkStatus({ running: false, progress: 0, total: 0, logs: [] });
+      const res = await fetch('/api/auto-benchmark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
       if (res.ok) {
         setAutoStatus(prev => ({ ...prev, running: true, phase: 'Initializing...', completed: 0, log: [], finished: false }));
         setCompareStrategies(['Hardware-Aware', 'Round-Robin', 'Least-Connection', 'Hashing']);
+        showToast('🔬 Research suite started — 8 benchmarks queued', 'success');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(`⚠️ ${err.detail || 'Could not start suite'}`, 'warning');
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      showToast('❌ Failed to start research suite — check API connection', 'error');
+    }
   };
 
   // ── Telemetry ───────────────────────────────────────────────────────────────
@@ -524,8 +749,12 @@ const App = () => {
       try {
         const data = await fetch('/api/report-status').then(r => r.json());
         setReportStatus(data);
-        if (data.report) setReport(data.report);
-        if (!data.running) { setIsGeneratingReport(false); clearInterval(id); }
+        if (data.report && typeof data.report === 'string') setReport(data.report);
+        if (!data.running) {
+          setIsGeneratingReport(false);
+          clearInterval(id);
+          if (data.report) showToast('📊 Intelligence Report ready!', 'success');
+        }
       } catch (e) { }
     }, 2000);
     return () => clearInterval(id);
@@ -533,7 +762,10 @@ const App = () => {
 
   const startBenchmark = () => {
     setLiveData([]); setStartTime(Date.now());
-    fetch('/api/benchmark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...loadParams, strategy }) }).catch(() => { });
+    showToast(`🚀 Benchmark started: ${strategy} · ${loadParams.concurrent} users · ${loadParams.total} requests`, 'success');
+    fetch('/api/benchmark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...loadParams, strategy }) }).catch(() => {
+      showToast('❌ Failed to start benchmark', 'error');
+    });
   };
 
   const generateReport = async () => {
@@ -543,7 +775,20 @@ const App = () => {
   };
 
   const stopReport = async () => {
-    try { await fetch('/api/cancel-report', { method: 'POST' }); } catch (e) { }
+    try {
+      await fetch('/api/cancel-report', { method: 'POST' });
+      setIsGeneratingReport(false);
+      showToast('🛑 Analysis stopped', 'warning');
+    } catch (e) { }
+  };
+
+  const stopBenchmark = async () => {
+    try {
+      await fetch('/api/benchmark-stop', { method: 'POST' });
+      showToast('🛑 Benchmark stopped', 'warning');
+    } catch (e) {
+      showToast('⚠️ Could not stop benchmark (endpoint may not exist)', 'error');
+    }
   };
 
   const generatePlots = () => {
@@ -578,45 +823,86 @@ const App = () => {
   // ── Report Renderer ─────────────────────────────────────────────────────────
   const renderReport = (text) => {
     if (!text) return null;
-    const sections = text.split('##PLOT_SEPARATOR##');
-    const output = [];
-    let i = 0;
-    while (i < sections.length) {
-      const seg = sections[i];
-      if (i + 2 < sections.length && sections[i + 1].trim().endsWith('.png')) {
-        const imgFile = sections[i + 1].trim();
-        if (seg.trim()) output.push(<div key={`t${i}`}>{renderMarkdown(seg)}</div>);
-        output.push(
-          <div key={`p${i}`} className="report-plot-card">
-            <img src={`/plots/${imgFile}?t=${plotTimestamp}`} alt={imgFile}
-              onError={e => { e.target.style.display = 'none'; }} />
-            <div className="report-analysis">{renderMarkdown(sections[i + 2])}</div>
-          </div>
-        );
-        i += 3;
-      } else {
-        if (seg.trim()) output.push(<div key={`s${i}`} className="report-synthesis">{renderMarkdown(seg)}</div>);
-        i++;
-      }
-    }
-    return output;
+    return <div className="report-synthesis">{renderMarkdown(text)}</div>;
   };
-
 
   const renderMarkdown = (text) => {
     if (!text) return null;
-    return text.split('\n').map((line, i) => {
-      if (line.startsWith('## 🏁') || line.startsWith('## 📌') || line.startsWith('## 🗂️'))
-        return <h2 key={i} className="report-h2-accent">{line.substring(3)}</h2>;
-      if (line.startsWith('# ')) return <h1 key={i} className="report-h1">{line.substring(2)}</h1>;
-      if (line.startsWith('## ')) return <h2 key={i} className="report-h2">{line.substring(3)}</h2>;
-      if (line.startsWith('### ')) return <h3 key={i} className="report-h3">{line.substring(4)}</h3>;
-      if (/^[1-9]\./.test(line) || ['🔍', '📶', '⚖️', '⚠️', '💡', '🛠️'].some(ic => line.startsWith(ic)))
-        return <p key={i} className="report-point">{line}</p>;
-      if (line.trim() === '---') return <hr key={i} className="report-hr" />;
-      if (line.trim() === '') return <div key={i} style={{ height: '0.4rem' }} />;
-      return <p key={i} className="report-p">{line}</p>;
-    });
+    const lines = text.split('\n');
+    const output = [];
+    let inTable = false;
+    let tableRows = [];
+
+    const flushTable = () => {
+      if (tableRows.length > 0) {
+        const headers = tableRows[0];
+        const dataRows = tableRows.slice(2); // skip separator row
+        output.push(
+          <table key={`tbl-${output.length}`} className="report-table">
+            <thead><tr>{headers.split('|').filter(c => c.trim()).map((c, j) =>
+              <th key={j}>{c.trim()}</th>
+            )}</tr></thead>
+            <tbody>{dataRows.map((row, ri) =>
+              <tr key={ri}>{row.split('|').filter(c => c.trim()).map((c, j) =>
+                <td key={j}>{c.trim()}</td>
+              )}</tr>
+            )}</tbody>
+          </table>
+        );
+        tableRows = [];
+      }
+      inTable = false;
+    };
+
+    const renderInline = (txt) => {
+      // Handle **bold** and basic emoji-prefixed labels
+      return txt.split(/(\*\*[^*]+\*\*)/).map((part, k) => {
+        if (part.startsWith('**') && part.endsWith('**'))
+          return <strong key={k}>{part.slice(2, -2)}</strong>;
+        return part;
+      });
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Table detection
+      if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+        if (!inTable) inTable = true;
+        tableRows.push(line);
+        // Check if next line is NOT a table row → flush
+        if (i + 1 >= lines.length || !lines[i + 1].trim().startsWith('|')) {
+          flushTable();
+        }
+        continue;
+      }
+      if (inTable) flushTable();
+
+      // Headings
+      if (line.startsWith('# ')) {
+        output.push(<h1 key={i} className="report-h1">{line.substring(2)}</h1>);
+      } else if (line.startsWith('### ')) {
+        output.push(<h3 key={i} className="report-h3">{line.substring(4)}</h3>);
+      } else if (line.startsWith('## ')) {
+        const isAccent = ['🏁', '📌', '🗂️', '📊', '📈'].some(ic => line.includes(ic));
+        output.push(<h2 key={i} className={isAccent ? 'report-h2-accent' : 'report-h2'}>{line.substring(3)}</h2>);
+      } else if (line.startsWith('> ')) {
+        output.push(<blockquote key={i} className="report-blockquote">{renderInline(line.substring(2))}</blockquote>);
+      } else if (line.startsWith('- ')) {
+        output.push(<p key={i} className="report-point">• {renderInline(line.substring(2))}</p>);
+      } else if (line.trim() === '---') {
+        output.push(<hr key={i} className="report-hr" />);
+      } else if (line.trim() === '') {
+        output.push(<div key={i} style={{ height: '0.4rem' }} />);
+      } else if (['🔍', '📶', '⚖️', '⚠️', '💡', '🛠️', '🔧'].some(ic => line.startsWith(ic))) {
+        output.push(<p key={i} className="report-point">{renderInline(line)}</p>);
+      } else {
+        output.push(<p key={i} className="report-p">{renderInline(line)}</p>);
+      }
+    }
+
+    if (inTable) flushTable();
+    return output;
   };
 
   // ── Derived stats ───────────────────────────────────────────────────────────
@@ -654,11 +940,14 @@ const App = () => {
       <aside className="sidebar no-print">
         {/* Logo / branding */}
         <div className="sidebar-brand">
-          <div className="sidebar-logo">⚡</div>
-          <div>
-            <div className="sidebar-title">CLUSTER CONSOLE</div>
-            <div className="sidebar-sub">Distributed Inference Engine</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+            <div className="sidebar-logo">⚡</div>
+            <div>
+              <div className="sidebar-title">CLUSTER CONSOLE</div>
+              <div className="sidebar-sub">Distributed Inference Engine</div>
+            </div>
           </div>
+          <button className="theme-toggle-btn" onClick={toggleTheme} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0.3rem 0.5rem', cursor: 'pointer', fontSize: '1rem' }}>{theme === 'dark' ? '☀️' : '🌙'}</button>
         </div>
 
         <div className="sidebar-body">
@@ -715,26 +1004,26 @@ const App = () => {
           </button>
 
           {/* ── Full Research Suite ── */}
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
+          <div style={{ borderTop: `1px solid var(--glass-border)`, paddingTop: '0.75rem', marginTop: '0.5rem' }}>
             <p className="section-label" style={{ marginBottom: '0.4rem' }}>🔬 Automated Research</p>
             <button className="btn" onClick={startAutoSuite}
               disabled={autoStatus.running || benchmarkStatus.running}
               style={{
                 background: autoStatus.running ? 'rgba(139,92,246,0.15)' : 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(99,102,241,0.2))',
                 border: `1px solid ${autoStatus.running ? C.violet : 'rgba(139,92,246,0.3)'}`,
-                color: autoStatus.running ? C.violet : '#e0e7ff',
+                color: autoStatus.running ? C.violet : 'var(--accent-light)',
                 fontWeight: 700,
               }}>
               {autoStatus.running ? `⏳ Running ${autoStatus.completed}/${autoStatus.total}...` : '🔬 Run Full Research Suite'}
             </button>
             {autoStatus.running && (
-              <div style={{ fontSize: '0.62rem', color: '#a5b4fc', marginTop: '0.35rem', lineHeight: 1.6 }}>
+              <div style={{ fontSize: '0.62rem', color: 'var(--accent-light)', marginTop: '0.35rem', lineHeight: 1.6 }}>
                 <div>Strategy: <b style={{ color: C.amber }}>{autoStatus.current_strategy}</b></div>
                 <div>Load: <b>{autoStatus.current_load}</b></div>
-                <div style={{ color: '#64748b' }}>{autoStatus.phase}</div>
+                <div style={{ color: 'var(--text-muted)' }}>{autoStatus.phase}</div>
               </div>
             )}
-            <p style={{ fontSize: '0.55rem', color: '#475569', marginTop: '0.35rem', lineHeight: 1.5 }}>
+            <p style={{ fontSize: '0.55rem', color: 'var(--text-muted)', marginTop: '0.35rem', lineHeight: 1.5 }}>
               Runs all 4 strategies × 2 loads (8 benchmarks), then auto-generates plots.
             </p>
           </div>
@@ -745,13 +1034,17 @@ const App = () => {
           </button>
           <button className="btn"
             style={{
-              borderColor: isGeneratingReport ? C.rose : 'transparent',
-              color: isGeneratingReport ? C.rose : '#64748b',
-              background: isGeneratingReport ? 'transparent' : 'rgba(255,255,255,0.03)',
-              cursor: isGeneratingReport ? 'pointer' : 'not-allowed',
+              borderColor: (isGeneratingReport || benchmarkStatus.running || autoStatus.running) ? C.rose : 'var(--glass-border)',
+              color: (isGeneratingReport || benchmarkStatus.running || autoStatus.running) ? C.rose : 'var(--text-muted)',
+              background: (isGeneratingReport || benchmarkStatus.running || autoStatus.running) ? 'rgba(244,63,94,0.06)' : 'var(--glass)',
+              cursor: (isGeneratingReport || benchmarkStatus.running || autoStatus.running) ? 'pointer' : 'not-allowed',
               marginTop: '0.5rem'
             }}
-            onClick={stopReport} disabled={!isGeneratingReport}>
+            onClick={() => {
+              if (isGeneratingReport) stopReport();
+              if (benchmarkStatus.running || autoStatus.running) stopBenchmark();
+            }}
+            disabled={!(isGeneratingReport || benchmarkStatus.running || autoStatus.running)}>
             🛑 Stop Analysis
           </button>
         </div>
@@ -787,20 +1080,23 @@ const App = () => {
                 <span className="node-id">{id.replace(/.*inference-/i, '').toUpperCase()}</span>
                 <span className="node-dot" style={{ background: stats.healthy ? C.emerald : C.rose }}></span>
               </div>
-              {[
-                { label: 'CPU', value: `${(stats.cpu_percent || 0).toFixed(1)}%`, pct: stats.cpu_percent || 0, color: C.indigo },
-                { label: 'RAM', value: `${(stats.memory_mb || 0).toFixed(0)} MB`, pct: (stats.memory_mb / 2048) * 100, color: C.emerald },
-                { label: 'Burden', value: ((stats.cpu_percent || 0) * 0.4 + ((stats.memory_mb || 0) / 2048 * 100) * 0.1 + (stats.active_requests || 0) * 50).toFixed(1), pct: ((stats.cpu_percent || 0) * 0.4 + ((stats.memory_mb || 0) / 2048 * 100) * 0.1 + (stats.active_requests || 0) * 50), color: C.rose },
-              ].map(m => (
-                <div key={m.label} className="meter-group">
-                  <div className="meter-label-row">
-                    <span>{m.label}</span><span className="meter-val">{m.value}</span>
+              {(() => {
+                const burdenScore = (stats.cpu_percent || 0) * 0.4 + ((stats.memory_mb || 0) / 1024 * 100) * 0.1 + (stats.active_requests || 0) * 50;
+                return [
+                  { label: 'CPU', value: `${(stats.cpu_percent || 0).toFixed(1)}%`, pct: stats.cpu_percent || 0, color: C.indigo },
+                  { label: 'RAM', value: `${(stats.memory_mb || 0).toFixed(0)} MB`, pct: (stats.memory_mb / 1024) * 100, color: C.emerald },
+                  { label: 'Burden', value: burdenScore.toFixed(1), pct: Math.min(100, (burdenScore / 250) * 100), color: C.rose },
+                ].map(m => (
+                  <div key={m.label} className="meter-group">
+                    <div className="meter-label-row">
+                      <span>{m.label}</span><span className="meter-val">{m.value}</span>
+                    </div>
+                    <div className="meter-bar-bg">
+                      <div className="meter-bar" style={{ width: `${Math.min(100, m.pct)}%`, background: m.color }} />
+                    </div>
                   </div>
-                  <div className="meter-bar-bg">
-                    <div className="meter-bar" style={{ width: `${Math.min(100, m.pct)}%`, background: m.color }} />
-                  </div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           ))}
         </section>
@@ -903,6 +1199,50 @@ const App = () => {
           </div>
         </section>
 
+        {/* ── Chart.js Research Suite Results ─────────────────────────────── */}
+        <ResearchBenchmarkChart results={suiteResults} theme={theme} />
+
+        {/* ── Deep Research Insights (Chart.js) ──────────────────────────── */}
+        <section className="gallery-section">
+          <div className="section-header">
+            <div>
+              <h2 className="section-title">Deep Research Insights</h2>
+              <p className="section-sub">Dynamic distribution analysis · 4 strategies × Normal/Stress</p>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.5rem' }}>
+            {['HA', 'RR', 'LC', 'HS'].flatMap(strat =>
+              ['Normal', 'Stress'].map(load => {
+                const res = suiteResults.find(r => normalizeStrategy(r.strategy) === strat && normalizeLoad(r.load) === load);
+                return (
+                  <div key={`${strat}-${load}`} className="glass-card" style={{ padding: '1.25rem', opacity: res ? 1 : 0.45 }}>
+                    <h4 style={{ fontSize: '0.85rem', marginBottom: '1rem', color: 'var(--text-main)' }}>{strat} ({load})</h4>
+                    <div style={{ height: 160 }}>
+                      <LatencyHistogram data={res ? detailedResults[res.filename] : []} theme={theme} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                      <div style={{ height: 120 }}>
+                        <SuccessRateDoughnut data={res ? detailedResults[res.filename] : null} />
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                        {res ? (
+                          <>
+                            <p><b>Mean:</b> {res.avg_latency.toFixed(1)}ms</p>
+                            <p><b>P95:</b> {res.p95_latency.toFixed(1)}ms</p>
+                            <p><b>Success:</b> {res.success_rate.toFixed(1)}%</p>
+                          </>
+                        ) : (
+                          <p style={{ fontStyle: 'italic' }}>Awaiting data…</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+
         {/* ── Live Console ──────────────────────────────────────────────── */}
         <section className="glass-card no-print">
           <h3 className="console-title">Live Cluster Console</h3>
@@ -919,7 +1259,7 @@ const App = () => {
             <div>
               <h2 className="section-title">Performance Comparison Gallery</h2>
               <p className="section-sub">Select strategies to compare (Click 'Update Analytics' to apply)</p>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.85rem', color: '#cbd5e1' }}>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--text-dim)' }}>
                 {['Hardware-Aware', 'Round-Robin', 'Least-Connection', 'Hashing'].map(s => (
                   <label key={s} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
                     <input type="checkbox" checked={compareStrategies.includes(s)}
@@ -1003,6 +1343,22 @@ const App = () => {
         </section>
 
       </main>
+
+      {/* ── Toast Notifications ──────────────────────────────────────── */}
+      {toast && (
+        <div key={toast.id} style={{
+          position: 'fixed', top: '1.5rem', right: '1.5rem', zIndex: 9999,
+          padding: '0.85rem 1.5rem', borderRadius: 14,
+          background: toast.type === 'success' ? 'rgba(16,185,129,0.95)' : toast.type === 'warning' ? 'rgba(245,158,11,0.95)' : toast.type === 'error' ? 'rgba(244,63,94,0.95)' : 'rgba(99,102,241,0.95)',
+          color: '#fff', fontWeight: 700, fontSize: '0.8rem',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          animation: 'fadeIn 0.3s ease-out',
+          backdropFilter: 'blur(12px)',
+          maxWidth: 420,
+        }}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 };
