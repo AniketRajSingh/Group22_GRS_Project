@@ -833,6 +833,15 @@ const App = () => {
     let inTable = false;
     let tableRows = [];
 
+    // Pre-parse references like [img_0]: data:image/png;base64,...
+    const refs = {};
+    for (let i = 0; i < lines.length; i++) {
+      const match = lines[i].match(/^\[(.*?)\]:\s*(.*?)$/);
+      if (match) {
+        refs[match[1]] = match[2];
+      }
+    }
+
     const flushTable = () => {
       if (tableRows.length > 0) {
         const headers = tableRows[0];
@@ -866,6 +875,9 @@ const App = () => {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
+      // Skip reference lines
+      if (line.match(/^\[(.*?)\]:\s*(.*?)$/)) continue;
+
       // Table detection
       if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
         if (!inTable) inTable = true;
@@ -886,6 +898,35 @@ const App = () => {
       } else if (line.startsWith('## ')) {
         const isAccent = ['🏁', '📌', '🗂️', '📊', '📈'].some(ic => line.includes(ic));
         output.push(<h2 key={i} className={isAccent ? 'report-h2-accent' : 'report-h2'}>{line.substring(3)}</h2>);
+      } else if (line.startsWith('![')) {
+        // Image parsing: ![alt](url) OR ![alt][ref]
+        const inlineMatch = line.match(/^!\[(.*?)\]\((.*?)\)/);
+        const refMatch = line.match(/^!\[(.*?)\]\[(.*?)\]/);
+        
+        if (inlineMatch) {
+          const [, alt, url] = inlineMatch;
+          output.push(
+            <div key={i} className="report-plot-card">
+              <img src={url} alt={alt} style={{ width: '100%', borderRadius: '12px', border: '1px solid var(--glass-border)', display: 'block' }}
+                onError={e => { e.target.style.display = 'none'; }} />
+            </div>
+          );
+        } else if (refMatch) {
+          const [, alt, refId] = refMatch;
+          const url = refs[refId];
+          if (url) {
+            output.push(
+              <div key={i} className="report-plot-card">
+                <img src={url} alt={alt} style={{ width: '100%', borderRadius: '12px', border: '1px solid var(--glass-border)', display: 'block' }}
+                  onError={e => { e.target.style.display = 'none'; }} />
+              </div>
+            );
+          } else {
+            output.push(<p key={i} className="report-p">{renderInline(line)}</p>);
+          }
+        } else {
+          output.push(<p key={i} className="report-p">{renderInline(line)}</p>);
+        }
       } else if (line.startsWith('> ')) {
         output.push(<blockquote key={i} className="report-blockquote">{renderInline(line.substring(2))}</blockquote>);
       } else if (line.startsWith('- ')) {

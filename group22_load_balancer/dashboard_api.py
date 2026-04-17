@@ -329,18 +329,23 @@ def _collect_benchmark_data():
                 continue
 
             # Extract strategy and load from filename
-            # Format: results_hardware-aware_normal_....json
-            parts = filename.replace("results_", "").split("_")
+            # Format: dynamic_results_hardware-aware_normal_....json
+            name_only = filename.replace("dynamic_results_", "").replace("results_", "")
+            parts = name_only.split("_")
             raw_strategy = parts[0] if len(parts) > 0 else "unknown"
+            
             # Handle multi-word strategies like "hardware-aware"
             load_name = "unknown"
             for lp in ["normal", "stress"]:
                 if lp in filename:
                     load_name = lp
                     break
-            # Re-extract strategy: everything between 'results_' and '_normal' or '_stress'
-            prefix = filename.replace("results_", "").replace(".json", "")
-            strategy_raw = prefix.split(f"_{load_name}")[0] if load_name != "unknown" else raw_strategy
+            
+            # Re-extract strategy cleanly
+            if load_name != "unknown":
+                strategy_raw = name_only.split(f"_{load_name}")[0]
+            else:
+                strategy_raw = raw_strategy
 
             strategy_short = STRATEGY_MAP.get(strategy_raw, strategy_raw.upper()[:2])
 
@@ -354,17 +359,44 @@ def _collect_benchmark_data():
             p95_lat = sorted_lat[min(p95_idx, len(sorted_lat) - 1)] if sorted_lat else 0
             success_rate = (successes / len(statuses) * 100) if statuses else 0
 
-            # Find matching plot image (best effort)
+            # Find matching plot image
             image_path = None
-            for plot_file in os.listdir(plot_dir) if os.path.exists(plot_dir) else []:
-                if plot_file.endswith(".png"):
-                    image_path = os.path.join(plot_dir, plot_file)
-                    break  # Use any available plot for now
+            plot_filename = None
+            plot_strat_map = {
+                "hardware-aware": "ha",
+                "round-robin": "rr",
+                "least-connection": "lc",
+                "hashing": "hash"
+            }
+            plot_strat = plot_strat_map.get(strategy_raw, strategy_raw)
+            expected_name = f"group22_latency_{plot_strat}_{load_name}.png"
 
+            if os.path.exists(os.path.join(plot_dir, expected_name)):
+                image_path = os.path.join(plot_dir, expected_name)
+                plot_filename = expected_name
+            elif os.path.exists(os.path.join(plot_dir, "group22_latency_comparison.png")):
+                image_path = os.path.join(plot_dir, "group22_latency_comparison.png")
+                plot_filename = "group22_latency_comparison.png"
+            else:
+                for plot_file in os.listdir(plot_dir) if os.path.exists(plot_dir) else []:
+                    if plot_file.endswith(".png"):
+                        image_path = os.path.join(plot_dir, plot_file)
+                        plot_filename = plot_file
+                        break
+            
+            # Base64 encode the image for embedding
+            b64_image = ""
+            if image_path and os.path.exists(image_path):
+                import base64
+                with open(image_path, "rb") as bf:
+                    b64_image = base64.b64encode(bf.read()).decode('utf-8')
+            
             plots_with_data.append({
                 "strategy": strategy_short,
                 "load": load_name.capitalize(),
                 "image_path": image_path,
+                "plot_filename": plot_filename,
+                "b64_image": b64_image,
                 "filename": filename,
                 "metrics": {
                     "avg_latency": avg_lat,
@@ -405,7 +437,15 @@ def _format_report(result):
         a = section.get("analysis", {})
 
         lines.append(f"\n## 📊 {i+1}. {s} — {l} Load")
-        lines.append("")
+        if section.get("b64_image"):
+            # Embed image directly in markdown
+            lines.append(f"![{s} {l} Plot][img_{i}]")
+            lines.append("")
+        elif section.get("plot_filename"):
+            # Fallback
+            lines.append(f"![{s} {l} Plot](/plots/{section['plot_filename']}?t={int(time.time())})")
+            lines.append("")
+        
         lines.append(f"| Metric | Value |")
         lines.append(f"|--------|-------|")
         lines.append(f"| Mean Latency | {m.get('avg_latency', 0):.1f} ms |")
@@ -482,7 +522,13 @@ def _format_report(result):
     else:
         lines.append(str(synthesis))
 
-    return "\n".join(lines)
+    # Append base64 references at the very bottom
+    lines.append("\n")
+    for i, section in enumerate(sections):
+        if section.get("b64_image"):
+            lines.append(f"[img_{i}]: data:image/png;base64,{section['b64_image']}")
+
+    return "\n".join(lines).strip()
 
 
 def _run_report_gen_v2():

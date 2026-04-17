@@ -10,8 +10,8 @@ OLLAMA_IP = "192.168.3.173:11434"
 MODEL = "qwen3.5:0.8b"
 MAX_RETRIES = 2
 RETRY_DELAY_S = 10
-OLLAMA_TIMEOUT_S = 120
-MAX_PARALLEL = 3
+OLLAMA_TIMEOUT_S = 180
+MAX_PARALLEL = 1
 
 # ── Per-Plot Analysis Prompt ───────────────────────────────────────────────────
 ANALYSIS_PROMPT_TEMPLATE = """You are a distributed systems performance analyst. Analyze this benchmark graph for strategy "{strategy}" under "{load}" load.

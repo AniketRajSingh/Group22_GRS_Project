@@ -474,12 +474,24 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* Print Styles */
 @media print {
-    .no-print, .sidebar, .main-header, .action-buttons, .console-card, .btn {
+    body * {
+        visibility: hidden;
+    }
+    #intel-report, #intel-report * {
+        visibility: visible;
+    }
+    #intel-report {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+        border: none;
+        background: white;
+    }
+    .no-print {
         display: none !important;
     }
-    .main-view { padding: 0 !important; margin: 0 !important; }
-    .glass-card { border: none !important; box-shadow: none !important; padding: 0 !important; }
-    .report-section { display: block !important; width: 100% !important; margin: 0 !important; }
-    body { background: white !important; }
-    .report-content h1 { color: black !important; }
 }
