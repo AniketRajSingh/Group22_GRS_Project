@@ -474,24 +474,31 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* Print Styles */
 @media print {
-    body * {
-        visibility: hidden;
-    }
-    #intel-report, #intel-report * {
-        visibility: visible;
-    }
-    #intel-report {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        margin: 0;
-        padding: 0;
-        box-shadow: none;
-        border: none;
-        background: white;
-    }
-    .no-print {
+    /* Hide everything by default */
+    body > #root > *, .sidebar-wrapper, .main-header, .action-buttons, .node-grid, .kpi-grid, .console-card, .btn, .no-print {
         display: none !important;
     }
+    
+    /* Reveal only the report */
+    .main-view { padding: 0 !important; margin: 0 !important; overflow: visible !important; width: 100% !important; }
+    .glass-card:not(#intel-report) { display: none !important; }
+    
+    #intel-report {
+        position: static !important;
+        display: block !important;
+        visibility: visible !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 2rem !important;
+        box-shadow: none !important;
+        border: 1px solid #eee !important;
+        background: white !important;
+        color: black !important;
+    }
+    #intel-report * { visibility: visible !important; }
+    #intel-report table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    #intel-report th, #intel-report td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    .report-plot-card { break-inside: avoid; margin: 2rem 0; text-align: center; }
+    .report-plot-card img { max-width: 100%; height: auto; border: 1px solid #eee !important; }
+    h1, h2, h3 { break-after: avoid; margin-top: 1.5rem; }
 }

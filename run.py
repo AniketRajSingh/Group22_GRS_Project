@@ -19,7 +19,7 @@ DOCKER_COMPOSE     = "docker-compose.yaml"
 
 components = {
     "dashboard_api": {
-        "cmd": ["python3", "-u", DASHBOARD_API_PATH],
+        "cmd": [sys.executable, "-u", DASHBOARD_API_PATH],
         "process": None,
         "log": f"{LOG_DIR}/dashboard_api.log",
         "restarts": 0

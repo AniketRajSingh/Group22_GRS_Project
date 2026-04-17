@@ -3,269 +3,261 @@ import requests  # type: ignore
 import json
 import os
 import time
+import ollama
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 OLLAMA_IP = "192.168.3.173:11434"
-MODEL = "qwen3.5:0.8b"
-MAX_RETRIES = 2
-RETRY_DELAY_S = 10
-OLLAMA_TIMEOUT_S = 180
+MODEL = "qwen3.5:35b"
+MAX_RETRIES = 3
+RETRY_DELAY_S = 5
+OLLAMA_TIMEOUT_S = 600
 MAX_PARALLEL = 1
 
-# ── Per-Plot Analysis Prompt ───────────────────────────────────────────────────
-ANALYSIS_PROMPT_TEMPLATE = """You are a distributed systems performance analyst. Analyze this benchmark graph for strategy "{strategy}" under "{load}" load.
+# Initialize Client
+client = ollama.Client(host=f"http://{OLLAMA_IP}")
 
-Benchmark Metrics:
-- Mean Latency: {mean_latency}ms
-- P95 Latency: {p95_latency}ms
-- Success Rate: {success_rate}%
-- Total Requests: {total_requests}
-- Concurrent Users: {concurrent}
+# ── Unified Cluster Analysis Prompt ──────────────────────────────────────────
+UNIFIED_PROMPT_TEMPLATE = """You are a senior distributed systems architect.
+Analyze the following {count} benchmarks. I provide matching images (plots) in sequence.
 
-Provide your analysis in this EXACT JSON format (no markdown, no code fences, just raw JSON):
+REQUIRED: Respond ONLY with a single JSON object. No conversational text.
+CONCISENESS IS CRITICAL. Follow word limits strictly to avoid truncation.
+
+Response Schema:
 {{
-  "metric_identity": "What metric this graph shows and why it matters",
-  "behavioral_trend": "Key patterns observed in the data distribution",
-  "performance_rating": "EXCELLENT / GOOD / MODERATE / POOR / CRITICAL",
-  "anomalies": "Any outliers, spikes, or unexpected patterns (or 'None detected')",
-  "bottleneck_analysis": "Where the main bottleneck lies based on the data",
-  "recommendation": "One specific, actionable improvement suggestion"
+  "per_plot_analysis": [
+    {{
+      "i": index_number,
+      "metric_identity": "Short name of metric (Max 8 words)",
+      "behavioral_trend": "Key data pattern (Max 15 words)",
+      "performance_rating": "EXCELLENT / GOOD / MODERATE / POOR / CRITICAL",
+      "anomalies": "Spikes or outliers (Max 10 words)",
+      "bottleneck_analysis": "Primary system constraint (Max 12 words)",
+      "recommendation": "One actionable fix (Max 15 words)"
+    }},
+    ... (one for each of the {count} benchmarks)
+  ],
+  "synthesis": {{
+    "overall_health": "Health summary (Max 20 words)",
+    "best_strategy_normal": "Best for Normal load + reason (Max 15 words)",
+    "best_strategy_stress": "Best for Stress load + reason (Max 15 words)",
+    "critical_findings": ["Finding 1 (Max 15 words)", "Finding 2 (Max 15 words)"],
+    "recommendations": ["Refinement 1 (Max 15 words)", "Refinement 2 (Max 15 words)"],
+    "conclusion": "Final architect verdict (Max 25 words)"
+  }}
 }}
+
+Benchmarks to analyze:
+{benchmarks_text}
 """
 
-# ── Synthesis Prompt ───────────────────────────────────────────────────────────
-SYNTHESIS_PROMPT_TEMPLATE = """You are a senior distributed systems architect. Based on these benchmark results, write a strategic synthesis.
 
-Benchmark Summary:
-{summary_table}
-
-Provide your synthesis in this EXACT JSON format (no markdown, no code fences, just raw JSON):
-{{
-  "overall_health": "Brief cluster health assessment (1-2 sentences)",
-  "best_strategy_normal": "Which strategy performed best under normal load and why",
-  "best_strategy_stress": "Which strategy performed best under stress load and why",
-  "critical_findings": ["Finding 1", "Finding 2", "Finding 3"],
-  "recommendations": ["Recommendation 1", "Recommendation 2", "Recommendation 3"],
-  "conclusion": "2-3 sentence executive conclusion"
-}}
-"""
-
-
-def _encode_image(image_path):
-    """Encode image to base64 for Ollama vision API."""
-    try:
-        with open(image_path, "rb") as f:
-            return base64.b64encode(f.read()).decode('utf-8')
-    except Exception:
-        return None
-
-
-def _call_ollama(prompt, image_b64=None):
-    """Send a single request to Ollama with retry logic."""
-    payload = {
-        "model": MODEL,
-        "prompt": prompt,
-        "stream": False,
-    }
-    if image_b64:
-        payload["images"] = [image_b64]
-
-    last_error = "Unknown error"
+def _call_ollama_unified(prompt, image_paths=None):
+    """Send a single massive request using the Ollama SDK."""
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            print(f"  [Ollama] Attempt {attempt}/{MAX_RETRIES}")
-            response = requests.post(
-                f"http://{OLLAMA_IP}/api/generate",
-                json=payload,
-                timeout=OLLAMA_TIMEOUT_S
+            print(f"  [Ollama-SDK] Unified Request (Attempt {attempt}/{MAX_RETRIES})...")
+            print(f"  [Debug] Prompt length: {len(prompt)} chars, Images: {len(image_paths) if image_paths else 0}")
+            
+            # Using SDK (Text-only mode for Qwen 3.5 35B)
+            response = client.generate(
+                model=MODEL,
+                prompt=prompt,
+                options={
+                    "num_ctx": 16384,
+                    "temperature": 0.1
+                }
             )
-            response.raise_for_status()
-            result = response.json()
-            text = result.get("response", "").strip()
+            
+            text = response.get("response", "").strip()
             if text:
+                print(f"  [Debug] Raw response start: {text[:150]}...")
                 return text
-            last_error = "Empty response from Ollama."
-        except requests.exceptions.Timeout:
-            last_error = f"Timed out after {OLLAMA_TIMEOUT_S}s"
-            print(f"  [Ollama] ⚠ Timeout on attempt {attempt}")
+            
         except Exception as e:
-            last_error = str(e)
-            print(f"  [Ollama] ⚠ Error on attempt {attempt}: {e}")
+            print(f"  [Ollama-SDK] ⚠ Error: {e}")
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY_S)
 
-        if attempt < MAX_RETRIES:
-            time.sleep(RETRY_DELAY_S)
-
-    return json.dumps({"error": f"Analysis unavailable after {MAX_RETRIES} attempts: {last_error}"})
+    return json.dumps({"error": "Failed to get unified analysis via SDK."})
 
 
-def _parse_json_response(text):
-    """Try to parse JSON from LLM response, handling common issues."""
-    # Strip markdown code fences if present
+def _fuzzy_get(data, keys, default=None):
+    """Get value from dict using a list of potential keys (case-insensitive)."""
+    if not isinstance(data, dict):
+        return default
+    # Try exact matches first
+    for k in keys:
+        if k in data:
+            val = data[k]
+            return val if val is not None else default
+    # Try case-insensitive
+    lkeys = [k.lower() for k in keys]
+    for dk in data.keys():
+        if dk.lower() in lkeys:
+            val = data[dk]
+            return val if val is not None else default
+    return default
+
+
+def _parse_unified_json(text):
+    """Extract and repair JSON from LLM response."""
+    if not text: return None
     text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        text = "\n".join(lines)
+
+    if "```" in text:
+        import re
+        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+        if match: text = match.group(1).strip()
     
-    # Try direct parse
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    
-    # Try to find JSON object in the text
     start = text.find("{")
     end = text.rfind("}") + 1
-    if start >= 0 and end > start:
-        try:
-            return json.loads(text[start:end])
-        except json.JSONDecodeError:
-            pass
+    if start < 0: return None
     
-    # Fallback: return error dict
-    return {"error": "Could not parse LLM response", "raw": text[:500]}
+    candidate = text[start:end]
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        fixed = candidate
+        if fixed.count('"') % 2 != 0: fixed += '"'
+        while fixed.count("[") > fixed.count("]"): fixed += "]"
+        while fixed.count("{") > fixed.count("}"): fixed += "}"
+        try:
+            return json.loads(fixed)
+        except:
+            last_bracket = fixed.rfind("]")
+            if last_bracket > 0:
+                truncated = fixed[:last_bracket+1] + "}"
+                try: return json.loads(truncated)
+                except: pass
+            return None
 
 
-def _analyze_single_plot(plot_info):
-    """Analyze a single plot with its benchmark data. Called in parallel."""
-    strategy = plot_info["strategy"]
-    load = plot_info["load"]
-    image_path = plot_info.get("image_path")
-    metrics = plot_info.get("metrics", {})
+def analyze_unified_cluster(plots_with_data, progress_callback=None):
+    """Analyzes the entire cluster in ONE single LLM call using the Ollama SDK."""
+    if not plots_with_data:
+        return {"sections": [], "synthesis": {"error": "No data available"}}
 
-    prompt = ANALYSIS_PROMPT_TEMPLATE.format(
-        strategy=strategy,
-        load=load,
-        mean_latency=f"{metrics.get('avg_latency', 0):.1f}",
-        p95_latency=f"{metrics.get('p95_latency', 0):.1f}",
-        success_rate=f"{metrics.get('success_rate', 0):.1f}",
-        total_requests=metrics.get("total_requests", "N/A"),
-        concurrent=metrics.get("concurrent", "N/A"),
+    if progress_callback:
+        progress_callback("init", f"Preparing unified analysis for {len(plots_with_data)} benchmarks...")
+
+    # 1. Prepare benchmarks text and collected image paths
+    benchmarks_text = []
+    image_paths = []
+    
+    for i, p in enumerate(plots_with_data):
+        m = p.get("metrics", { })
+        dt = (
+            f"[{i+1}] {p['strategy']} {p['load']}: Mean={m.get('avg_latency',0):.1f}ms, "
+            f"P95={m.get('p95_latency',0):.1f}ms, Success={m.get('success_rate',0):.1f}%"
+        )
+        benchmarks_text.append(dt)
+        ipath = p.get("image_path")
+        if ipath and os.path.exists(ipath):
+            image_paths.append(ipath)
+
+    prompt = UNIFIED_PROMPT_TEMPLATE.format(
+        count=len(plots_with_data),
+        benchmarks_text="\n".join(benchmarks_text)
     )
 
-    image_b64 = _encode_image(image_path) if image_path and os.path.exists(image_path) else None
-    
-    print(f"  [Report] Analyzing {strategy} ({load})...")
-    raw_response = _call_ollama(prompt, image_b64)
-    parsed = _parse_json_response(raw_response)
+    if progress_callback:
+        progress_callback("analysis", "Analyzing cluster state (Unified SDK Request)...")
 
-    return {
-        "strategy": strategy,
-        "load": load,
-        "metrics": metrics,
-        "analysis": parsed,
-        "image_path": image_path,
+    # 2. Call LLM (SDK handles file reading/encoding internally)
+    raw_response = _call_ollama_unified(prompt, image_paths)
+    parsed = _parse_unified_json(raw_response)
+
+    # 3. Direct Mapping
+    sections = []
+    analyses_list = _fuzzy_get(parsed, ["per_plot_analysis", "analyses", "results"], [])
+    
+    # Handle dict-based output
+    if isinstance(analyses_list, dict):
+        try:
+            analyses_list = [analyses_list[k] for k in sorted(analyses_list.keys(), key=lambda x: str(x))]
+        except:
+            analyses_list = []
+
+    for i, p in enumerate(plots_with_data):
+        analysis = {}
+        if i < len(analyses_list):
+            raw_a = analyses_list[i]
+            # Map exactly to what _format_report expects
+            analysis = {
+                "metric_identity": _fuzzy_get(raw_a, ["metric_identity", "id", "identity"], "N/A"),
+                "behavioral_trend": _fuzzy_get(raw_a, ["behavioral_trend", "trend", "behavior"], "N/A"),
+                "performance_rating": _fuzzy_get(raw_a, ["performance_rating", "rating", "status"], "N/A"),
+                "anomalies": _fuzzy_get(raw_a, ["anomalies", "spikes", "outliers"], "None detected"),
+                "bottleneck_analysis": _fuzzy_get(raw_a, ["bottleneck_analysis", "bottleneck"], "N/A"),
+                "recommendation": _fuzzy_get(raw_a, ["recommendation", "fix", "suggestion"], "N/A")
+            }
+        else:
+            analysis = {"error": "Analysis missing from model response"}
+        
+        sections.append({
+            "strategy": p["strategy"],
+            "load": p["load"],
+            "metrics": p["metrics"],
+            "analysis": analysis,
+            "image_path": p.get("image_path"),
+            "b64_image": p.get("b64_image")
+        })
+
+    # Exact synthesis mapping
+    s_raw = _fuzzy_get(parsed, ["synthesis", "summary", "overview"], { })
+    synthesis = {
+        "overall_health": _fuzzy_get(s_raw, ["overall_health", "health"], "N/A"),
+        "best_strategy_normal": _fuzzy_get(s_raw, ["best_strategy_normal", "best_overall", "best_normal"], "N/A"),
+        "best_strategy_stress": _fuzzy_get(s_raw, ["best_strategy_stress", "best_stress"], "N/A"),
+        "critical_findings": _fuzzy_get(s_raw, ["critical_findings", "findings"], []),
+        "recommendations": _fuzzy_get(s_raw, ["recommendations", "fixes"], []),
+        "conclusion": _fuzzy_get(s_raw, ["conclusion", "summary"], "")
     }
+    
+    if progress_callback:
+        progress_callback("complete", "Analysis successfully mapped via SDK.")
+
+    return {"sections": sections, "synthesis": synthesis}
 
 
-def _generate_synthesis(all_results):
-    """Generate final synthesis from all per-plot analyses."""
-    # Build summary table
-    rows = []
-    for r in all_results:
-        m = r["metrics"]
-        a = r["analysis"]
-        rating = a.get("performance_rating", "N/A") if isinstance(a, dict) else "N/A"
-        rows.append(
-            f"- {r['strategy']} ({r['load']}): "
-            f"Mean={m.get('avg_latency', 0):.1f}ms, "
-            f"P95={m.get('p95_latency', 0):.1f}ms, "
-            f"Success={m.get('success_rate', 0):.1f}%, "
-            f"Rating={rating}"
-        )
-    summary_table = "\n".join(rows)
-
-    prompt = SYNTHESIS_PROMPT_TEMPLATE.format(summary_table=summary_table)
-    print("  [Report] Generating executive synthesis...")
-    raw_response = _call_ollama(prompt)
-    return _parse_json_response(raw_response)
-
-
+# ── Legacy wrapper ───────────────────────────────────────────────────────────
 def analyze_plots_parallel(plots_with_data, progress_callback=None):
-    """
-    Main entry point. Analyzes all plots in parallel (3 at a time) and generates synthesis.
-    
-    Args:
-        plots_with_data: list of dicts with keys: strategy, load, image_path, metrics
-        progress_callback: optional fn(phase, detail) called at each step
-    
-    Returns:
-        dict with keys: sections (list of per-plot results), synthesis (dict)
-    """
-    if not plots_with_data:
-        return {"sections": [], "synthesis": {"error": "No benchmark data available"}}
-
-    total = len(plots_with_data)
-    if progress_callback:
-        progress_callback("init", f"Analyzing {total} benchmarks with {MAX_PARALLEL} parallel workers")
-
-    # ── Phase 1: Parallel per-plot analysis ──
-    results = [None] * total
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as executor:
-        future_to_idx = {}
-        for i, plot_info in enumerate(plots_with_data):
-            future = executor.submit(_analyze_single_plot, plot_info)
-            future_to_idx[future] = i
-
-        for future in as_completed(future_to_idx):
-            idx = future_to_idx[future]
-            try:
-                results[idx] = future.result()
-            except Exception as e:
-                results[idx] = {
-                    "strategy": plots_with_data[idx]["strategy"],
-                    "load": plots_with_data[idx]["load"],
-                    "metrics": plots_with_data[idx].get("metrics", {}),
-                    "analysis": {"error": str(e)},
-                }
-            
-            completed_count = sum(1 for r in results if r is not None)
-            if progress_callback:
-                r = results[idx]
-                progress_callback(
-                    "plot_done",
-                    f"{r['strategy']} ({r['load']}) — {completed_count}/{total}",
-                )
-
-    # Filter out None (shouldn't happen but safety)
-    results = [r for r in results if r is not None]
-
-    # ── Phase 2: Synthesis ──
-    if progress_callback:
-        progress_callback("synthesis", "Generating executive synthesis...")
-
-    synthesis = _generate_synthesis(results)
-
-    if progress_callback:
-        progress_callback("complete", "Report generation complete")
-
-    return {"sections": results, "synthesis": synthesis}
+    """Wrapper to maintain compatibility with dashboard_api.py."""
+    return analyze_unified_cluster(plots_with_data, progress_callback)
 
 
 # ── Legacy compatibility ───────────────────────────────────────────────────────
 def get_graph_description(image_path):
-    """Legacy single-image analysis (kept for backward compatibility)."""
-    b64 = _encode_image(image_path)
-    if not b64:
-        return f"Error: Could not read {os.path.basename(image_path)}"
-    prompt = "Analyze this graph. Describe the key trends, anomalies, and performance insights."
-    return _call_ollama(prompt, b64)
+    """Legacy single-image analysis using SDK."""
+    if not os.path.exists(image_path):
+        return f"Error: File not found {os.path.basename(image_path)}"
+    
+    try:
+        response = client.generate(
+            model=MODEL,
+            prompt="Analyze this graph. Describe key trends and insights.",
+            images=[image_path]
+        )
+        return response.get("response", "No response")
+    except Exception as e:
+        return f"Error: {e}"
 
 
 def analyze_all_plots():
-    """Legacy sequential analysis (kept for backward compatibility)."""
+    """Legacy sequential analysis using SDK."""
     plot_dir = os.path.join(os.path.dirname(__file__), "group22_plots/static")
     if not os.path.exists(plot_dir):
-        yield "Error", "⚠️ No plots found. Run a benchmark first."
+        yield "Error", "⚠️ No plots found."
         return
 
     plots = sorted([f for f in os.listdir(plot_dir) if f.endswith('.png')])
     if not plots:
-        yield "Error", "⚠️ No plots found in directory."
+        yield "Error", "⚠️ No plots found."
         return
 
-    yield "Initializing...", "## 🗂️ Unified Cluster Intelligence Report (UCIR)\n\nAnalysis generated from recent benchmark data."
+    yield "Initializing...", "## 🗂️ Unified Cluster Intelligence Report (UCIR)"
 
     synthesis_notes = []
     for filename in plots:
@@ -278,15 +270,10 @@ def analyze_all_plots():
         yield clean_name, formatted_chunk
 
     yield "Final Synthesis", ""
-    synth_prompt = (
-        "Based on these brief notes from recent graphs, write a 3-paragraph executive summary:\n"
-        + "\n".join(synthesis_notes)
-    )
-    payload = {"model": MODEL, "prompt": synth_prompt, "stream": False}
     try:
-        response = requests.post(f"http://{OLLAMA_IP}/api/generate", json=payload, timeout=60)
-        result = response.json()
-        synthesis = result.get("response", "Could not generate synthesis.")
+        synth_prompt = f"Executive summary for:\n" + "\n".join(synthesis_notes)
+        response = client.generate(model=MODEL, prompt=synth_prompt)
+        synthesis = response.get("response", "N/A")
     except Exception as e:
         synthesis = f"Synthesis failed: {e}"
 

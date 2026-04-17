@@ -436,16 +436,9 @@ def _format_report(result):
         m = section["metrics"]
         a = section.get("analysis", {})
 
-        lines.append(f"\n## 📊 {i+1}. {s} — {l} Load")
-        if section.get("b64_image"):
-            # Embed image directly in markdown
-            lines.append(f"![{s} {l} Plot][img_{i}]")
-            lines.append("")
-        elif section.get("plot_filename"):
-            # Fallback
-            lines.append(f"![{s} {l} Plot](/plots/{section['plot_filename']}?t={int(time.time())})")
-            lines.append("")
+        lines.append(f"\n## 📊 Benchmark {i+1}: {s} — {l} Load")
         
+        lines.append(f"\n### 📈 Performance Metrics")
         lines.append(f"| Metric | Value |")
         lines.append(f"|--------|-------|")
         lines.append(f"| Mean Latency | {m.get('avg_latency', 0):.1f} ms |")
@@ -453,6 +446,13 @@ def _format_report(result):
         lines.append(f"| Success Rate | {m.get('success_rate', 0):.1f}% |")
         lines.append(f"| Total Requests | {m.get('total_requests', 'N/A')} |")
         lines.append("")
+
+        if section.get("b64_image"):
+            lines.append(f"### 🖼️ Latency Distribution Plot")
+            lines.append(f"![{s} {l} Plot](data:image/png;base64,{section['b64_image']})")
+            lines.append("")
+        
+        lines.append(f"### 🔍 AI Analysis & Insights")
 
         if isinstance(a, dict) and "error" not in a:
             rating = a.get("performance_rating", "N/A")
@@ -497,38 +497,32 @@ def _format_report(result):
     # ── Executive Synthesis ──
     lines.append("\n## 🏁 Executive Synthesis")
     lines.append("")
-    if isinstance(synthesis, dict) and "error" not in synthesis:
-        lines.append(f"**Overall Health**: {synthesis.get('overall_health', 'N/A')}")
-        lines.append("")
-        lines.append(f"**Best Strategy (Normal)**: {synthesis.get('best_strategy_normal', 'N/A')}")
-        lines.append("")
-        lines.append(f"**Best Strategy (Stress)**: {synthesis.get('best_strategy_stress', 'N/A')}")
-        lines.append("")
-        findings = synthesis.get("critical_findings", [])
-        if findings:
-            lines.append("### 🔑 Critical Findings")
-            for f in findings:
-                lines.append(f"- {f}")
-            lines.append("")
-        recs = synthesis.get("recommendations", [])
-        if recs:
-            lines.append("### 🛠️ Recommendations")
-            for r in recs:
-                lines.append(f"- {r}")
-            lines.append("")
-        lines.append(f"**Conclusion**: {synthesis.get('conclusion', 'N/A')}")
-    elif isinstance(synthesis, dict) and "error" in synthesis:
-        lines.append(f"⚠️ Synthesis error: {synthesis['error']}")
+    if isinstance(synthesis, dict) and "error" in synthesis:
+        if "raw_content" in synthesis:
+            lines.append("\n### 📝 Raw Analysis (Fallback)")
+            lines.append(synthesis["raw_content"])
+        else:
+            lines.append(f"\n⚠️ Synthesis error: {synthesis['error']}")
     else:
-        lines.append(str(synthesis))
+        lines.append(f"\n### 🌎 Overall Health")
+        lines.append(synthesis.get("overall_health", "N/A"))
+        lines.append(f"\n- **Best Normal Strategy:** {synthesis.get('best_strategy_normal', 'N/A')}")
+        lines.append(f"- **Best Stress Strategy:** {synthesis.get('best_strategy_stress', 'N/A')}")
+        
+        lines.append(f"\n### 🔑 Critical Findings")
+        for f in synthesis.get("critical_findings", []):
+            lines.append(f"• {f}")
+            
+        lines.append(f"\n### 🛠️ Recommendations")
+        for r in synthesis.get("recommendations", []):
+            lines.append(f"• {r}")
+            
+        lines.append(f"\n### ⚖️ Conclusion")
+        lines.append(synthesis.get("conclusion", ""))
 
-    # Append base64 references at the very bottom
-    lines.append("\n")
-    for i, section in enumerate(sections):
-        if section.get("b64_image"):
-            lines.append(f"[img_{i}]: data:image/png;base64,{section['b64_image']}")
-
-    return "\n".join(lines).strip()
+    # Universal sanitizer: ensure no None values are passed to join
+    final_lines = [str(line) if line is not None else "" for line in lines]
+    return "\n".join(final_lines).strip()
 
 
 def _run_report_gen_v2():
@@ -549,6 +543,8 @@ def _run_report_gen_v2():
                 "--strategies", "Hardware-Aware", "Round-Robin", "Least-Connection", "Hashing",
             ]
             subprocess.run(plot_cmd, check=True, timeout=60)
+            # STRATEGIC DELAY: Ensure plots are flushed to disk
+            time.sleep(3)
         except Exception as e:
             print(f"  [Report] Plot generation warning: {e}")
 
@@ -561,28 +557,22 @@ def _run_report_gen_v2():
             _report_status["report"] = _format_report({"sections": [], "synthesis": {"error": "No benchmark data found. Run a benchmark first."}})
             return
 
-        total = len(plots_with_data)
-        _report_status["total_steps"] = total + 2  # plots + synthesis + formatting
+        _report_status["total_steps"] = 4 # Plots, Read, Analyze, Format
 
-        # ③ Run parallel analysis
+        # ③ Run unified analysis
         def progress_cb(phase, detail):
             if _report_status.get("cancel"):
                 return
             _report_status["current_graph"] = detail
-            if phase == "plot_done":
-                parts = detail.split("—")
-                name = parts[0].strip() if parts else detail
-                if name not in _report_status["completed"]:
-                    _report_status["completed"].append(name)
-                done = len(_report_status["completed"])
-                _report_status["progress"] = int(10 + (done / total) * 75)
-            elif phase == "synthesis":
-                _report_status["progress"] = 90
+            if phase == "init":
+                _report_status["progress"] = 15
+            elif phase == "analysis":
+                _report_status["progress"] = 30
             elif phase == "complete":
-                _report_status["progress"] = 100
+                _report_status["progress"] = 90
 
-        from describe_graph import analyze_plots_parallel
-        result = analyze_plots_parallel(plots_with_data, progress_callback=progress_cb)
+        from describe_graph import analyze_unified_cluster
+        result = analyze_unified_cluster(plots_with_data, progress_callback=progress_cb)
 
         # ④ Format into markdown
         _report_status["current_graph"] = "Formatting report..."
@@ -744,6 +734,7 @@ async def get_cluster_config():
 
 # ── Auto-Benchmark Orchestrator ───────────────────────────────────────────────
 STRATEGIES = ["hardware-aware", "round-robin", "least-connection", "hashing"]
+MAX_PARALLEL = 3
 LOAD_PROFILES = [
     {"name": "normal",  "concurrent": 2,  "total": 20, "tokens": 20},
     {"name": "stress",  "concurrent": 10, "total": 60, "tokens": 50},
