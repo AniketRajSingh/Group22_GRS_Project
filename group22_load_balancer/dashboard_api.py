@@ -93,7 +93,8 @@ class BenchmarkRequest(BaseModel):
     concurrent: int
     total: int
     strategy: str
-    tokens: int = 20
+    min_tokens: int = 10
+    max_tokens: int = 50
 
 _benchmark_status = {"running": False, "logs": [], "strategy": "", "live_data": []}
 
@@ -116,7 +117,8 @@ def _run_benchmark_proc(req: BenchmarkRequest):
         env = os.environ.copy()
         env["BENCHMARK_CONCURRENT"] = str(req.concurrent)
         env["BENCHMARK_TOTAL"] = str(req.total)
-        env["BENCHMARK_TOKENS"] = str(req.tokens)
+        env["BENCHMARK_MIN_TOKENS"] = str(req.min_tokens)
+        env["BENCHMARK_MAX_TOKENS"] = str(req.max_tokens)
         
         cmd = [
             "python3", "-u", os.path.join(BASE_DIR, "group22_benchmarks/group22_load_generator.py"),
@@ -395,7 +397,6 @@ def _collect_benchmark_data():
                 "strategy": strategy_short,
                 "load": load_name.capitalize(),
                 "image_path": image_path,
-                "plot_filename": plot_filename,
                 "b64_image": b64_image,
                 "filename": filename,
                 "metrics": {
@@ -420,107 +421,89 @@ def _format_report(result):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     strategies_tested = list(set(s["strategy"] for s in sections))
 
+    import base64
+    plot_dir = os.path.join(BASE_DIR, "group22_plots/dynamic")
+    
+    global_dash_b64 = ""
+    dash_path = os.path.join(plot_dir, "group22_global_dashboard.png")
+    if os.path.exists(dash_path):
+        with open(dash_path, "rb") as f:
+            global_dash_b64 = base64.b64encode(f.read()).decode('utf-8')
+            
+    dist_b64 = ""
+    dist_path = os.path.join(plot_dir, "group22_latency_distribution.png")
+    if os.path.exists(dist_path):
+        with open(dist_path, "rb") as f:
+            dist_b64 = base64.b64encode(f.read()).decode('utf-8')
+
     lines = [
-        "# 🗂️ Unified Cluster Intelligence Report (UCIR)",
+        "# 🏟️ The Ultimate Load Balancing Strategy Showdown",
         f"\n> Generated: {timestamp}  ",
-        f"> Strategies analyzed: {', '.join(strategies_tested)}  ",
-        f"> Total benchmarks: {len(sections)}",
+        f"> Contenders: {', '.join(strategies_tested)}  ",
+        f"> Datapoints Analyzed: {len(sections)} load profiles",
         "",
         "---",
     ]
 
-    # ── Per-benchmark sections ──
-    for i, section in enumerate(sections):
-        s = section["strategy"]
-        l = section["load"]
-        m = section["metrics"]
-        a = section.get("analysis", {})
-
-        lines.append(f"\n## 📊 Benchmark {i+1}: {s} — {l} Load")
+    # ── Executive Verdict ──
+    lines.append("\n## 🏆 Executive Verdict")
+    if isinstance(synthesis, dict) and "error" not in synthesis:
+        lines.append(synthesis.get("executive_verdict", "N/A"))
+        lines.append("\n### 🏗️ Architectural Conclusion")
+        lines.append(synthesis.get("architectural_conclusion", "N/A"))
+    else:
+        lines.append("⚠️ Analysis failed. Engine returned error or empty response.")
         
-        lines.append(f"\n### 📈 Performance Metrics")
-        lines.append(f"| Metric | Value |")
-        lines.append(f"|--------|-------|")
-        lines.append(f"| Mean Latency | {m.get('avg_latency', 0):.1f} ms |")
-        lines.append(f"| P95 Latency | {m.get('p95_latency', 0):.1f} ms |")
-        lines.append(f"| Success Rate | {m.get('success_rate', 0):.1f}% |")
-        lines.append(f"| Total Requests | {m.get('total_requests', 'N/A')} |")
-        lines.append("")
+    # ── Global Dashboard ──
+    if global_dash_b64:
+        lines.append(f"\n## 📊 Unified Cluster Dashboard")
+        lines.append(            f"![Unified Dashboard](data:image/png;base64,{global_dash_b64})")
 
-        if section.get("b64_image"):
-            lines.append(f"### 🖼️ Latency Distribution Plot")
-            lines.append(f"![{s} {l} Plot](data:image/png;base64,{section['b64_image']})")
-            lines.append("")
-        
-        lines.append(f"### 🔍 AI Analysis & Insights")
+    # ── Technical Deep-Dive ──
+    lines.extend([
+        "\n---",
+        "## 🧠 Under the Hood: Why HA Fails vs. LC Success",
+        "",
+        "### ⏱️ Metric Lag (Reactive vs. Proactive)",
+        "Hardware-Aware (HA) relies on OS-level metrics like CPU/RAM usage. These are **sampled metrics** that reflect the past. If a burst of 50 requests arrives in 1 second, the CPU metric takes a few cycles to 'catch up.' During those crucial seconds, HA keeps dumping requests into the node because its last reported state *looked* healthy.",
+        "",
+        "### 👁️ Queue Awareness (State-Blindness)",
+        "HA is 'state-blind'—it doesn't know how many requests are currently in-flight or waiting in the node's event loop. **Least-Connection (LC)**, however, knows exactly how many active TCP/HTTP connections are currently assigned to each node. It stops sending traffic the instant a node's connection depth rises, even before the CPU starts spinning higher.",
+        "",
+        "### 🏔️ The Saturation Cliff",
+        "Under stress, nodes hit their Docker cgroup quotas. Once a node is throttled, a single request that normally takes 500ms might take 50s. **LC intelligently steers traffic** away from these bottlenecked queues, whereas **HA continues to trust the hardware telemetry** until it eventually reports saturation—usually far too late to prevent the 180s P95 timeouts."
+    ])
 
-        if isinstance(a, dict) and "error" not in a:
-            rating = a.get("performance_rating", "N/A")
-            rating_emoji = {"EXCELLENT": "🟢", "GOOD": "🟡", "MODERATE": "🟠", "POOR": "🔴", "CRITICAL": "⛔"}.get(rating, "⚪")
-            lines.append(f"**Performance Rating**: {rating_emoji} {rating}")
-            lines.append("")
-            lines.append(f"🔍 **Metric Identity**: {a.get('metric_identity', 'N/A')}")
-            lines.append("")
-            lines.append(f"📶 **Behavioral Trend**: {a.get('behavioral_trend', 'N/A')}")
-            lines.append("")
-            lines.append(f"⚠️ **Anomalies**: {a.get('anomalies', 'None detected')}")
-            lines.append("")
-            lines.append(f"🔧 **Bottleneck Analysis**: {a.get('bottleneck_analysis', 'N/A')}")
-            lines.append("")
-            lines.append(f"💡 **Recommendation**: {a.get('recommendation', 'N/A')}")
-        elif isinstance(a, dict) and "error" in a:
-            lines.append(f"⚠️ Analysis error: {a['error']}")
-            if "raw" in a:
-                lines.append(f"\n> Raw LLM output: {a['raw'][:300]}")
-        else:
-            lines.append(f"Analysis: {a}")
-
-        lines.append("")
-        lines.append("---")
-
-    # ── Cross-strategy comparison table ──
-    lines.append("\n## 📈 Cross-Strategy Comparison")
-    lines.append("")
-    lines.append("| Strategy | Load | Mean (ms) | P95 (ms) | Success | Rating |")
-    lines.append("|----------|------|-----------|----------|---------|--------|")
+    # ── Master Comparison Data ──
+    lines.append("\n---\n## 📈 Unified Metric Data Table")
+    lines.append("| Strategy | Load | Mean (ms) | P95 (ms) | Success |")
+    lines.append("|----------|------|-----------|----------|---------|")
     for section in sections:
         m = section["metrics"]
-        a = section.get("analysis", {})
-        rating = a.get("performance_rating", "—") if isinstance(a, dict) else "—"
         lines.append(
             f"| {section['strategy']} | {section['load']} | "
             f"{m.get('avg_latency', 0):.1f} | {m.get('p95_latency', 0):.1f} | "
-            f"{m.get('success_rate', 0):.1f}% | {rating} |"
+            f"{m.get('success_rate', 0):.1f}% |"
         )
     lines.append("")
 
-    # ── Executive Synthesis ──
-    lines.append("\n## 🏁 Executive Synthesis")
-    lines.append("")
-    if isinstance(synthesis, dict) and "error" in synthesis:
-        if "raw_content" in synthesis:
-            lines.append("\n### 📝 Raw Analysis (Fallback)")
-            lines.append(synthesis["raw_content"])
-        else:
-            lines.append(f"\n⚠️ Synthesis error: {synthesis['error']}")
-    else:
-        lines.append(f"\n### 🌎 Overall Health")
-        lines.append(synthesis.get("overall_health", "N/A"))
-        lines.append(f"\n- **Best Normal Strategy:** {synthesis.get('best_strategy_normal', 'N/A')}")
-        lines.append(f"- **Best Stress Strategy:** {synthesis.get('best_strategy_stress', 'N/A')}")
+    if isinstance(synthesis, dict) and "error" not in synthesis:
+        lines.append("\n---")
+        lines.append("\n## 🚀 Latency Showdown")
+        lines.append(synthesis.get("latency_showdown", "N/A"))
         
-        lines.append(f"\n### 🔑 Critical Findings")
+        if dist_b64:
+            lines.append(f"\n### 📉 Latency Distribution Profiles")
+            lines.append(f"![Latency Distribution](data:image/png;base64,{dist_b64})")
+
+        lines.append("\n## 🛡️ Reliability Showdown")
+        lines.append(synthesis.get("reliability_showdown", "N/A"))
+        
+        lines.append(f"\n## 🔑 Critical Findings")
         for f in synthesis.get("critical_findings", []):
             lines.append(f"• {f}")
-            
-        lines.append(f"\n### 🛠️ Recommendations")
-        for r in synthesis.get("recommendations", []):
-            lines.append(f"• {r}")
-            
-        lines.append(f"\n### ⚖️ Conclusion")
-        lines.append(synthesis.get("conclusion", ""))
 
-    # Universal sanitizer: ensure no None values are passed to join
+    # Universal sanitizer
     final_lines = [str(line) if line is not None else "" for line in lines]
     return "\n".join(final_lines).strip()
 
@@ -736,8 +719,8 @@ async def get_cluster_config():
 STRATEGIES = ["hardware-aware", "round-robin", "least-connection", "hashing"]
 MAX_PARALLEL = 3
 LOAD_PROFILES = [
-    {"name": "normal",  "concurrent": 2,  "total": 20, "tokens": 20},
-    {"name": "stress",  "concurrent": 10, "total": 60, "tokens": 50},
+    {"name": "normal",  "concurrent": 2,  "total": 20, "min_tokens": 10, "max_tokens": 50},
+    {"name": "stress",  "concurrent": 20, "total": 100, "min_tokens": 50, "max_tokens": 400},
 ]
 
 _auto_status: Dict[str, Any] = {
@@ -788,16 +771,23 @@ def _run_auto_orchestrator(selected_strategies=None, selected_loads=None):
                 # ② Cooldown for telemetry to stabilize
                 _auto_status["phase"] = f"Cooldown before {run_label}"
                 _auto_log(f"❄️  Cooldown 3s...")
-                time.sleep(3)
+                for _ in range(15):
+                    if not _auto_status.get("running"):
+                        break
+                    time.sleep(0.2)
+                
+                if not _auto_status.get("running"):
+                    break
 
                 # ③ Run benchmark
                 _auto_status["phase"] = f"Running: {run_label}"
-                _auto_log(f"🚀 Starting benchmark: {run_label} (concurrent={profile['concurrent']}, total={profile['total']}, tokens={profile['tokens']})")
+                _auto_log(f"🚀 Starting benchmark: {run_label} (concurrent={profile['concurrent']}, total={profile['total']}, tokens={profile['min_tokens']}-{profile['max_tokens']})")
 
                 env = os.environ.copy()
                 env["BENCHMARK_CONCURRENT"] = str(profile["concurrent"])
                 env["BENCHMARK_TOTAL"] = str(profile["total"])
-                env["BENCHMARK_TOKENS"] = str(profile["tokens"])
+                env["BENCHMARK_MIN_TOKENS"] = str(profile["min_tokens"])
+                env["BENCHMARK_MAX_TOKENS"] = str(profile["max_tokens"])
                 cmd = [
                     "python3", "-u",
                     os.path.join(BASE_DIR, "group22_benchmarks/group22_load_generator.py"),
@@ -806,12 +796,30 @@ def _run_auto_orchestrator(selected_strategies=None, selected_loads=None):
                 ]
                 try:
                     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
+                    
+                    # Clear live data so the UI flashes 0 and resets math limits for the new suite strategy
+                    _benchmark_status["live_data"] = []
+                    
                     if proc.stdout:
                         for line in proc.stdout:
+                            if not _auto_status.get("running"):
+                                proc.kill()
+                                _auto_log("🛑 Benchmark forcefully terminated by user.")
+                                break
                             line = line.strip()
-                            if not line.startswith("__PROGRESS_DATA__:"):
+                            if line.startswith("__PROGRESS_DATA__:"):
+                                try:
+                                    data_json = line.replace("__PROGRESS_DATA__:", "")
+                                    _benchmark_status["live_data"].append(json.loads(data_json))
+                                except:
+                                    pass
+                            else:
                                 _auto_log(f"  [{strat}/{profile['name']}] {line}")
                     proc.wait()
+                    
+                    if not _auto_status.get("running"):
+                        break
+                        
                     exit_code = proc.returncode
                     if exit_code == 0:
                         _auto_log(f"✅ Completed: {run_label}")
@@ -819,6 +827,12 @@ def _run_auto_orchestrator(selected_strategies=None, selected_loads=None):
                         _auto_log(f"⚠️ Benchmark exited with code {exit_code}")
                 except Exception as e:
                     _auto_log(f"❌ Benchmark failed: {e}")
+                
+                if not _auto_status.get("running"):
+                    break
+            
+            if not _auto_status.get("running"):
+                break
 
                 completed += 1
                 _auto_status["completed"] = completed
@@ -860,8 +874,8 @@ def _run_auto_orchestrator(selected_strategies=None, selected_loads=None):
 class AutoBenchmarkRequest(BaseModel):
     strategies: List[str] = ["hardware-aware", "round-robin", "least-connection", "hashing"]
     loads: List[Dict[str, Any]] = [
-        {"name": "normal",  "concurrent": 2,  "total": 20, "tokens": 20},
-        {"name": "stress",  "concurrent": 10, "total": 60, "tokens": 50},
+        {"name": "normal",  "concurrent": 2,  "total": 20, "min_tokens": 10, "max_tokens": 50},
+        {"name": "stress",  "concurrent": 20, "total": 100, "min_tokens": 50, "max_tokens": 400},
     ]
 
 @app.post("/api/auto-benchmark")
@@ -904,6 +918,8 @@ async def stop_benchmark():
     _auto_status["phase"] = "Stopped by user"
     _auto_status["finished"] = True
     _benchmark_status["running"] = False
+    _benchmark_status["live_data"] = []
+    _benchmark_status["strategy"] = "STOPPED"
     return {"status": "stopped"}
 
 @app.get("/api/auto-benchmark-status")

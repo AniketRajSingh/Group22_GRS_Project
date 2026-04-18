@@ -14,6 +14,32 @@ app = FastAPI(title="CPU Inference Node")
 MODEL_PATH = os.getenv("MODEL_PATH", "/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
 N_THREADS = int(os.getenv("N_THREADS", os.cpu_count() or 4))
 
+def get_docker_cpu_limit():
+    """Reads deep cgroups virtual boundaries to normalize cpu_percent accurately against docker limits."""
+    try:
+        # Cgroup v1
+        if os.path.exists("/sys/fs/cgroup/cpu/cpu.cfs_quota_us"):
+            with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as f:
+                quota = int(f.read().strip())
+            with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as f:
+                period = int(f.read().strip())
+            if quota > 0 and period > 0:
+                return float(quota) / float(period)
+        
+        # Cgroup v2
+        if os.path.exists("/sys/fs/cgroup/cpu.max"):
+            with open("/sys/fs/cgroup/cpu.max") as f:
+                parts = f.read().strip().split()
+                if len(parts) >= 2 and parts[0] != "max":
+                    return float(parts[0]) / float(parts[1])
+    except Exception:
+        pass
+    
+    return float(os.cpu_count() or 1.0)
+
+# Caches the actual container docker-compose limit instead of total host limit
+CPU_LIMIT_BOUNDARY = get_docker_cpu_limit()
+
 # Initialize LLM
 # We use a global variable to keep the model in memory
 llm = None
@@ -68,15 +94,11 @@ async def health():
 
 @app.get("/stats")
 async def stats():
-    """Returns real-time hardware stats from the container's perspective."""
-    # process.cpu_percent() returns >100% for multi-core. 
-    # Normalizing by N_THREADS so it scales perfectly 0 -> 100% for the dashboard.
+    """Returns real-time hardware stats normalized accurately against Docker cgroups limits."""
+    # cpu_percent measures against fully available cores on the host. 
+    # Normalizing against the actual specific CGroup bounds prevents deflated readings.
     cpu_usage = _process.cpu_percent()
-    normalized_cpu = min(100.0, (cpu_usage / N_THREADS)) if N_THREADS > 0 else cpu_usage
-    
-    # If it's hitting high loads but psutil is underreporting due to Docker cgroup constraints, 
-    # we apply a small booster if we know there are active threads 
-    # but let's just use raw normalized first, it usually hits 100% under massive concurrent load.
+    normalized_cpu = min(100.0, (cpu_usage / CPU_LIMIT_BOUNDARY)) if CPU_LIMIT_BOUNDARY > 0 else cpu_usage
     
     return {
         "cpu_percent": normalized_cpu,
@@ -107,8 +129,13 @@ async def infer(request: InferenceRequest):
             tokens = request.max_tokens
             latency_sim = (tokens / 20.0) # 0.05s per token
             await asyncio.sleep(latency_sim)
-            # Tiny CPU burst for dashboard visual
-            for i in range(5000): _ = i * i
+            
+            def hard_burn():
+                # A micro-burst to ensure the CPU scales up realistically during Mock profiles
+                for i in range(10000): _ = i * i
+            
+            # Send the pure computational block to a threaded worker so FastAPI Event Loop continues receiving TCP polling safely!
+            await asyncio.to_thread(hard_burn)
             text_result = f"MOCK RESPONSE from {os.getenv('NODE_ID', 'unknown')}: Model not found, but system is healthy!"
         
         end_time = time.time()

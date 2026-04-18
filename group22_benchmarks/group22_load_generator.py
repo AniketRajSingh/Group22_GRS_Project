@@ -5,6 +5,7 @@ import json
 import argparse
 import sys
 import os
+import random
 
 async def send_request(session, url, prompt_id, max_tokens, strategy=None):
     """Sends a single inference request and returns performance metrics."""
@@ -15,7 +16,7 @@ async def send_request(session, url, prompt_id, max_tokens, strategy=None):
     target_url = f"{url}?strategy={strategy}" if strategy else url
     start_time = time.time()
     try:
-        async with session.post(target_url, json=payload, timeout=3600) as response:
+        async with session.post(target_url, json=payload, timeout=180.0) as response:
             result = await response.json()
             latency = (time.time() - start_time) * 1000
             return {
@@ -33,10 +34,10 @@ async def send_request(session, url, prompt_id, max_tokens, strategy=None):
             "node": "unknown"
         }
 
-async def run_benchmark(url, concurrent_requests, total_requests, max_tokens, strategy):
+async def run_benchmark(url, concurrent_requests, total_requests, min_tokens, max_tokens, strategy):
     """Runs a benchmark suite with controlled concurrency and live progress reporting."""
     print(f"Starting benchmark on {url}")
-    print(f"Strategy params -> Concurrent: {concurrent_requests}, Total: {total_requests}, Tokens: {max_tokens}, Strategy: {strategy}")
+    print(f"Strategy params -> Concurrent: {concurrent_requests}, Total: {total_requests}, Bounds: [{min_tokens}, {max_tokens}], Strategy: {strategy}")
     
     results = []
     # Use a semaphore to strictly respect the concurrency limit
@@ -47,8 +48,27 @@ async def run_benchmark(url, concurrent_requests, total_requests, max_tokens, st
             return await send_request(session, url, i, tokens, strategy)
 
     async with aiohttp.ClientSession() as session:
-        # Create all tasks
-        tasks = [asyncio.create_task(wrapped_request(session, url, i, max_tokens)) for i in range(total_requests)]
+        tasks = []
+        
+        # Guard against backwards ranges
+        safe_min = min(min_tokens, max_tokens)
+        safe_max = max(min_tokens, max_tokens)
+        if safe_min == safe_max:
+            safe_max += 1
+
+        range_delta = safe_max - safe_min
+
+        for i in range(total_requests):
+            # Heterogeneous payload simulation (85% Minnows, 15% Whales)
+            if random.random() > 0.15:
+                # Minnow: fast, simple requests constrained to the lower 20% of the range
+                upper_minnow_bound = safe_min + int(range_delta * 0.20)
+                t = random.randint(safe_min, max(safe_min, upper_minnow_bound))
+            else:
+                # Whale: aggressive, system-locking requests constrained to the upper 10% of the extreme
+                lower_whale_bound = safe_max - int(range_delta * 0.10)
+                t = random.randint(min(safe_max, lower_whale_bound), safe_max)
+            tasks.append(asyncio.create_task(wrapped_request(session, url, i, t)))
         
         completed = 0
         for task in asyncio.as_completed(tasks):
@@ -128,7 +148,8 @@ if __name__ == "__main__":
     # Determine load parameters from environment (dashboard) or defaults
     concurrent = int(os.environ.get("BENCHMARK_CONCURRENT", 2))
     total = int(os.environ.get("BENCHMARK_TOTAL", 20))
-    tokens = int(os.environ.get("BENCHMARK_TOKENS", 20))
+    min_tokens = int(os.environ.get("BENCHMARK_MIN_TOKENS", 10))
+    max_tokens = int(os.environ.get("BENCHMARK_MAX_TOKENS", 50))
     load_type = "normal" if concurrent < 5 else "stress"
 
     # Step 1: Wait for system readiness
@@ -136,15 +157,15 @@ if __name__ == "__main__":
     if not ready:
         sys.exit(1)
 
-    # Step 2: Quick warm up
-    asyncio.run(warm_up(args.url, rounds=1))
+    # Step 2: Widespread warm up across all logical cluster nodes (ensuring Round-Robin hits 3+ nodes)
+    asyncio.run(warm_up(args.url, rounds=5))
 
     # Step 3: Brief cooldown
     cooldown(1)
 
     # Step 4: Run benchmark
     print("=" * 60)
-    results = asyncio.run(run_benchmark(args.url, concurrent, total, tokens, args.strategy))
+    results = asyncio.run(run_benchmark(args.url, concurrent, total, min_tokens, max_tokens, args.strategy))
     
     # Step 5: Save final results
     save_results_with_tag(results, args.strategy, load_type, args.tag)

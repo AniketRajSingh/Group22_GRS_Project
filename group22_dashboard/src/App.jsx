@@ -581,7 +581,7 @@ const App = () => {
   const [telemetry, setTelemetry] = useState({});
   const [strategy, setStrategy] = useState('hardware-aware');
   const [compareStrategies, setCompareStrategies] = useState(['Hardware-Aware', 'Least-Connection']);
-  const [loadParams, setLoadParams] = useState({ concurrent: 2, total: 20, tokens: 20 });
+  const [loadParams, setLoadParams] = useState({ concurrent: 2, total: 20, min_tokens: 10, max_tokens: 50 });
   const [benchmarkStatus, setBenchmarkStatus] = useState({ running: false, logs: [], strategy: '', live_data: [] });
   const [generating, setGenerating] = useState(false);
   const [countdown, setCountdown] = useState(0);
@@ -599,8 +599,8 @@ const App = () => {
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const [selectedStrategies, setSelectedStrategies] = useState(['hardware-aware', 'round-robin', 'least-connection', 'hashing']);
   const [selectedLoads, setSelectedLoads] = useState([
-    { id: 'normal', name: 'Normal', concurrent: 2, total: 20, tokens: 20, enabled: true },
-    { id: 'stress', name: 'Stress', concurrent: 10, total: 60, tokens: 50, enabled: true },
+    { id: 'normal', name: 'Normal', concurrent: 2, total: 20, min_tokens: 10, max_tokens: 50, enabled: true },
+    { id: 'stress', name: 'Stress', concurrent: 20, total: 100, min_tokens: 50, max_tokens: 400, enabled: true },
   ]);
   const [toast, setToast] = useState(null);
   const showToast = (message, type = 'info') => {
@@ -1001,14 +1001,13 @@ const App = () => {
             <p className="section-label">Benchmark Config</p>
             <div className="mode-row">
               <button className={`btn ${loadParams.concurrent < 5 ? 'btn-active' : 'btn-ghost'}`}
-                onClick={() => setLoadParams({ concurrent: 2, total: 20, tokens: 20 })}>Normal</button>
+                onClick={() => setLoadParams({ concurrent: 2, total: 20, min_tokens: 10, max_tokens: 50 })}>Normal</button>
               <button className={`btn ${loadParams.concurrent >= 10 ? 'btn-active' : 'btn-ghost'}`}
-                onClick={() => setLoadParams({ concurrent: 10, total: 60, tokens: 50 })}>Stress</button>
+                onClick={() => setLoadParams({ concurrent: 20, total: 100, min_tokens: 50, max_tokens: 400 })}>Stress</button>
             </div>
             {[
               { key: 'concurrent', label: 'Number of Users', min: 1, max: 50, step: 1 },
               { key: 'total', label: 'Total Requests', min: 10, max: 500, step: 10 },
-              { key: 'tokens', label: 'Max Tokens', min: 10, max: 512, step: 10 },
             ].map(({ key, label, min, max, step }) => (
               <div key={key} className="slider-group">
                 <div className="slider-label-row">
@@ -1019,6 +1018,25 @@ const App = () => {
                   onChange={e => setLoadParams({ ...loadParams, [key]: parseInt(e.target.value) })} />
               </div>
             ))}
+            
+            <div className="slider-group" style={{ marginTop: '1rem' }}>
+              <div className="slider-label-row" style={{ color: 'var(--accent)' }}>
+                <span>Token Bounds (Minnows ↔ Whales)</span>
+                <span className="slider-val" style={{ whiteSpace: 'nowrap' }}>[{loadParams.min_tokens}, {loadParams.max_tokens}]</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginTop: '0.5rem' }}>
+                <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '0.2rem' }}>Min Tokens</div>
+                    <input type="range" min={1} max={loadParams.max_tokens - 1} step={5} value={loadParams.min_tokens}
+                    onChange={e => setLoadParams({ ...loadParams, min_tokens: parseInt(e.target.value) })} />
+                </div>
+                <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '0.2rem' }}>Max Tokens</div>
+                    <input type="range" min={loadParams.min_tokens + 1} max={2000} step={50} value={loadParams.max_tokens}
+                    onChange={e => setLoadParams({ ...loadParams, max_tokens: parseInt(e.target.value) })} />
+                </div>
+              </div>
+            </div>
           </section>
 
           {/* ── Routing Strategy ── */}

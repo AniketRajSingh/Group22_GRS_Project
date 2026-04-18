@@ -469,36 +469,142 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .report-content h1 { font-size: 1.8rem; font-weight: 800; color: #1e293b; margin-bottom: 2rem; }
-.report-content h2 { font-size: 1.2rem; font-weight: 700; color: #475569; border-bottom: 2px solid #f1f5f9; padding-bottom: 0.5rem; }
-.report-content p { font-size: 0.95rem; margin-bottom: 0.75rem; }
+.report-content h2 { font-size: 1.25rem; font-weight: 700; color: var(--primary); border-bottom: 2px solid #f1f5f9; padding-bottom: 0.6rem; margin-top: 2rem; margin-bottom: 1rem; }
+.report-content h3 { font-size: 1.05rem; font-weight: 700; color: #334155; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+.report-content p { font-size: 0.95rem; margin-bottom: 0.85rem; line-height: 1.6; color: #475569; }
+.report-content blockquote { border-left: 4px solid #cbd5e1; padding-left: 1rem; color: #64748b; font-style: italic; margin: 1.5rem 0; }
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5rem 0;
+    font-size: 0.875rem;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    border: 1px solid #e2e8f0;
+}
+
+.report-table th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.report-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #1e293b;
+}
+
+.report-table tr:last-child td {
+    border-bottom: none;
+}
+
+.report-table tr:hover {
+    background: #fbfcfe;
+}
+
+.report-point {
+    font-size: 0.92rem;
+    margin: 0.5rem 0;
+    padding-left: 0.5rem;
+    color: #334155;
+    line-height: 1.5;
+}
 
 /* Print Styles */
+/* 🖨️ Enhanced Print Styles - Premium Color Preservation */
 @media print {
-    /* Hide everything by default */
-    body > #root > *, .sidebar-wrapper, .main-header, .action-buttons, .node-grid, .kpi-grid, .console-card, .btn, .no-print {
+    @page { margin: 15mm; }
+    
+    body {
+        background: white !important;
+        color: #1e293b !important; /* Slate 800 for better text readability */
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Hide UI clutter while keeping report ancestors visible */
+    .sidebar-wrapper, .main-header, .action-buttons, .node-grid, 
+    .kpi-grid, .console-card, .btn, .no-print, .page-hero,
+    .gallery-section, .glass-card:not(#intel-report), .stat-pill {
         display: none !important;
     }
-    
-    /* Reveal only the report */
-    .main-view { padding: 0 !important; margin: 0 !important; overflow: visible !important; width: 100% !important; }
-    .glass-card:not(#intel-report) { display: none !important; }
-    
+
+    /* Full-width report container */
+    .dashboard-container, .main-view {
+        display: block !important;
+        width: 100% !important;
+        margin: 0 !important;
+        overflow: visible !important;
+    }
+
     #intel-report {
         position: static !important;
         display: block !important;
-        visibility: visible !important;
         width: 100% !important;
-        margin: 0 !important;
-        padding: 2rem !important;
-        box-shadow: none !important;
-        border: 1px solid #eee !important;
+        border: none !important;
         background: white !important;
-        color: black !important;
+        padding: 0 !important;
     }
-    #intel-report * { visibility: visible !important; }
-    #intel-report table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
-    #intel-report th, #intel-report td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-    .report-plot-card { break-inside: avoid; margin: 2rem 0; text-align: center; }
-    .report-plot-card img { max-width: 100%; height: auto; border: 1px solid #eee !important; }
-    h1, h2, h3 { break-after: avoid; margin-top: 1.5rem; }
+
+    /* Header Colors - Restoring the Premium Look */
+    .report-h1 { color: #4f46e5 !important; font-size: 2.2rem !important; margin-bottom: 2rem !important; }
+    .report-h2 { color: #1e293b !important; border-bottom: 2px solid #eef2ff !important; }
+    .report-h2-accent { 
+        color: #4f46e5 !important; 
+        background-color: #f5f7ff !important; 
+        border-left: 4px solid #4f46e5 !important;
+        padding: 12px !important;
+        display: block !important;
+    }
+    .report-h3 { color: #4338ca !important; }
+
+    /* Table Formatting - Indigo Headers */
+    .report-table {
+        border-collapse: collapse !important;
+        width: 100% !important;
+        margin: 1.5rem 0 !important;
+        break-inside: avoid;
+        border: 1px solid #e2e8f0 !important;
+    }
+    
+    .report-table th {
+        background: #f8fafc !important;
+        color: #444e5d !important;
+        border-bottom: 2px solid #4f46e5 !important;
+        font-weight: 800 !important;
+    }
+    
+    .report-table td {
+        border-bottom: 1px solid #f1f5f9 !important;
+        color: #1e293b !important;
+    }
+
+    /* Image Preservation */
+    .report-plot-card {
+        break-inside: avoid;
+        margin: 2rem 0 !important;
+        padding: 1rem !important;
+        background: #fbfcfe !important;
+        border: 1px solid #f1f5f9 !important;
+        border-radius: 12px !important;
+    }
+
+    .report-plot-card img {
+        max-width: 100% !important;
+        filter: none !important; /* Remove contrast filter for true colors */
+    }
+
+    /* Semantic highlights */
+    .report-point { color: #334155 !important; }
+    .chip-green { color: #059669 !important; font-weight: 700 !important; }
+    .chip-blue { color: #2563eb !important; font-weight: 700 !important; }
 }

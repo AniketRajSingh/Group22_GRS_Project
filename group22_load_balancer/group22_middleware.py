@@ -6,6 +6,7 @@ import group22_config
 from group22_telemetry import TelemetryCollector
 import os
 import hashlib
+import threading
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LoadBalancer")
@@ -32,7 +33,7 @@ collector = TelemetryCollector(NODES, polling_interval=POLLING_INTERVAL)
 collector.start()
 
 # Global persistent client to avoid socket exhaustion
-client = httpx.AsyncClient(timeout=3600.0)
+client = httpx.AsyncClient(timeout=180.0)
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -40,6 +41,7 @@ async def shutdown_event():
 
 # For round-robin and tracking
 current_node_index = 0
+rr_lock = threading.Lock()
 active_requests = {node: 0 for node in NODES}
 
 def get_next_node_round_robin():
@@ -47,10 +49,11 @@ def get_next_node_round_robin():
     # Only route to healthy nodes
     healthy_nodes = [n for n in NODES if collector.get_node_stats(n).get("healthy", False)]
     if not healthy_nodes:
-        return NODES[0] # Fallback
+        raise HTTPException(status_code=503, detail="Cluster Offline: No healthy nodes available")
         
-    node_name = healthy_nodes[current_node_index % len(healthy_nodes)]
-    current_node_index = (current_node_index + 1)
+    with rr_lock:
+        node_name = healthy_nodes[current_node_index % len(healthy_nodes)]
+        current_node_index = (current_node_index + 1)
     return node_name
 
 def get_best_node_hardware_aware():
@@ -58,43 +61,52 @@ def get_best_node_hardware_aware():
     best_node = None
     min_score = float('inf')
     
+    total_active_requests = sum(active_requests.values())
+    
     for name in NODES:
         stats = collector.get_node_stats(name)
         if not stats.get("healthy", False):
             continue
             
-        # Burden Score Formula (Refined):
-        # Score = (CPU % * 0.4) + (Memory Usage % * 0.1) + (Active Requests * 50)
+        # Burden Score Formula (Mathematically Normalized):
+        # Score = (CPU % * 0.4) + (Memory Usage % * 0.2) + (Normalized Active Requests * 0.4)
         cpu = stats.get("cpu_percent", 100)
         mem = stats.get("memory_mb", 1024) / 1024 * 100
-        busy_factor = active_requests.get(name, 0) * 50
         
-        score = (cpu * 0.4) + (mem * 0.1) + busy_factor
+        # Normalize active requests against cluster capacity so it doesn't arbitrarily overshadow CPU spikes
+        normalized_conn = (active_requests.get(name, 0) / max(1, total_active_requests)) * 100
+        
+        score = (cpu * 0.4) + (mem * 0.2) + (normalized_conn * 0.4)
         
         if score < min_score:
             min_score = score
             best_node = name
             
-    return best_node or get_next_node_round_robin()
+    if best_node is None:
+        raise HTTPException(status_code=503, detail="Cluster Offline: No healthy nodes available")
+    return best_node
 
 def get_node_least_connection():
     best_node = None
     min_reqs = 9999999 # type: int
     healthy_nodes = [n for n in NODES if collector.get_node_stats(n).get("healthy", False)]
     if not healthy_nodes:
-        return NODES[0]
+        raise HTTPException(status_code=503, detail="Cluster Offline: No healthy nodes available")
         
     for name in healthy_nodes:
         reqs = active_requests.get(name, 0)
         if reqs < min_reqs:
             min_reqs = reqs
             best_node = name
-    return best_node or get_next_node_round_robin()
+            
+    if best_node is None:
+        raise HTTPException(status_code=503, detail="Cluster Offline: No healthy nodes available")
+    return best_node
 
 def get_node_hashing(body: dict):
     healthy_nodes = [n for n in NODES if collector.get_node_stats(n).get("healthy", False)]
     if not healthy_nodes:
-        return NODES[0]
+        raise HTTPException(status_code=503, detail="Cluster Offline: No healthy nodes available")
     
     prompt = body.get("prompt", "")
     hash_val = int(hashlib.md5(prompt.encode('utf-8')).hexdigest(), 16)

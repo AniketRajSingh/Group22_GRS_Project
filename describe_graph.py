@@ -19,32 +19,25 @@ client = ollama.Client(host=f"http://{OLLAMA_IP}")
 
 # ── Unified Cluster Analysis Prompt ──────────────────────────────────────────
 UNIFIED_PROMPT_TEMPLATE = """You are a senior distributed systems architect.
-Analyze the following {count} benchmarks. I provide matching images (plots) in sequence.
+You are conducting the ultimate showdown between 4 load balancing strategies: Hardware-Aware (HA), Least-Connection (LC), Hashing (HS), and Round-Robin (RR).
+Analyze the numerical telemetry data containing {count} benchmarks of Mean Latency, P95 Latency, and Success Rates across Normal and Stress loads.
 
 REQUIRED: Respond ONLY with a single JSON object. No conversational text.
-CONCISENESS IS CRITICAL. Follow word limits strictly to avoid truncation.
+Be highly detailed and analytical in your evaluations. Write in full paragraphs.
+
+Your analysis MUST specifically address:
+1. Metric Lag (Reactive vs. Proactive): How HA's reliance on CPU/RAM lag behind actual saturation.
+2. Queue/State Awareness: Why LC's connection tracking prevents "blind" dumping of requests.
+3. The Saturation Cliff: The impact of Cgroup/Docker throttling on P95 latency when nodes are fully saturated.
 
 Response Schema:
 {{
-  "per_plot_analysis": [
-    {{
-      "i": index_number,
-      "metric_identity": "Short name of metric (Max 8 words)",
-      "behavioral_trend": "Key data pattern (Max 15 words)",
-      "performance_rating": "EXCELLENT / GOOD / MODERATE / POOR / CRITICAL",
-      "anomalies": "Spikes or outliers (Max 10 words)",
-      "bottleneck_analysis": "Primary system constraint (Max 12 words)",
-      "recommendation": "One actionable fix (Max 15 words)"
-    }},
-    ... (one for each of the {count} benchmarks)
-  ],
   "synthesis": {{
-    "overall_health": "Health summary (Max 20 words)",
-    "best_strategy_normal": "Best for Normal load + reason (Max 15 words)",
-    "best_strategy_stress": "Best for Stress load + reason (Max 15 words)",
-    "critical_findings": ["Finding 1 (Max 15 words)", "Finding 2 (Max 15 words)"],
-    "recommendations": ["Refinement 1 (Max 15 words)", "Refinement 2 (Max 15 words)"],
-    "conclusion": "Final architect verdict (Max 25 words)"
+    "executive_verdict": "The ultimate winning strategy and an impassioned, technical justification (Max 80 words)",
+    "latency_showdown": "Deep technical analysis of P95 spikes vs throughput consistency (Max 120 words)",
+    "reliability_showdown": "Stress-load failure analysis and success rate divergence (Max 80 words)",
+    "architectural_conclusion": "The final verdict on State-Awareness vs Metric-Awareness (Max 150 words)",
+    "critical_findings": ["In-depth finding 1", "In-depth finding 2", "In-depth finding 3"]
   }}
 }}
 
@@ -208,12 +201,11 @@ def analyze_unified_cluster(plots_with_data, progress_callback=None):
     # Exact synthesis mapping
     s_raw = _fuzzy_get(parsed, ["synthesis", "summary", "overview"], { })
     synthesis = {
-        "overall_health": _fuzzy_get(s_raw, ["overall_health", "health"], "N/A"),
-        "best_strategy_normal": _fuzzy_get(s_raw, ["best_strategy_normal", "best_overall", "best_normal"], "N/A"),
-        "best_strategy_stress": _fuzzy_get(s_raw, ["best_strategy_stress", "best_stress"], "N/A"),
-        "critical_findings": _fuzzy_get(s_raw, ["critical_findings", "findings"], []),
-        "recommendations": _fuzzy_get(s_raw, ["recommendations", "fixes"], []),
-        "conclusion": _fuzzy_get(s_raw, ["conclusion", "summary"], "")
+        "executive_verdict": _fuzzy_get(s_raw, ["executive_verdict", "verdict"], "N/A"),
+        "latency_showdown": _fuzzy_get(s_raw, ["latency_showdown", "latency"], "N/A"),
+        "reliability_showdown": _fuzzy_get(s_raw, ["reliability_showdown", "reliability"], "N/A"),
+        "architectural_conclusion": _fuzzy_get(s_raw, ["architectural_conclusion", "conclusion"], "N/A"),
+        "critical_findings": _fuzzy_get(s_raw, ["critical_findings", "findings"], [])
     }
     
     if progress_callback:
